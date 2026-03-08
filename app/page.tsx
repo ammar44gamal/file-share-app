@@ -46,7 +46,6 @@ export default function DistributedFileHub() {
     setFilesList(data || []);
   };
 
-  // --- NEW: Toggle Visibility logic ---
   const toggleFilePrivacy = async (fileId: string, currentStatus: boolean) => {
     const { error } = await supabase
       .from('files')
@@ -114,17 +113,16 @@ export default function DistributedFileHub() {
     fetchFiles();
   };
 
-  // --- DARK MODE LOGIN FIX ---
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black p-6">
         <div className="bg-[#111] border border-[#333] p-12 rounded-[2rem] shadow-2xl w-full max-w-sm">
           <h2 className="text-2xl font-bold mb-8 text-center text-white tracking-tighter">FileHub Auth</h2>
           {isSignUp && (
-            <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-xl focus:border-white outline-none font-medium" onChange={e => setUsername(e.target.value)} />
+            <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-xl focus:border-white outline-none" onChange={e => setUsername(e.target.value)} />
           )}
-          <input type="email" placeholder="Email" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-xl focus:border-white outline-none font-medium" onChange={e => setEmail(e.target.value)} />
-          <input type="password" placeholder="Password" className="w-full p-4 mb-8 bg-black border border-[#333] text-white rounded-xl focus:border-white outline-none font-medium" onChange={e => setPassword(e.target.value)} />
+          <input type="email" placeholder="Email" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-xl focus:border-white outline-none" onChange={e => setEmail(e.target.value)} />
+          <input type="password" placeholder="Password" className="w-full p-4 mb-8 bg-black border border-[#333] text-white rounded-xl focus:border-white outline-none" onChange={e => setPassword(e.target.value)} />
           <button onClick={handleAuth} className="w-full bg-white text-black py-4 rounded-xl font-bold hover:bg-[#ccc] transition uppercase tracking-widest text-[10px]">
             {isSignUp ? 'Sign Up' : 'Log In'}
           </button>
@@ -138,7 +136,6 @@ export default function DistributedFileHub() {
 
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
-      {/* SIDEBAR */}
       <aside className="w-72 bg-black border-r border-[#222] p-8 flex flex-col">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
@@ -153,9 +150,12 @@ export default function DistributedFileHub() {
           {folders.map(folder => (
             <div key={folder.id} className="group relative">
               <button onClick={() => setSelectedFolder(folder.id)} className={`w-full text-left px-4 py-3 rounded-xl text-sm flex items-center justify-between transition ${selectedFolder === folder.id ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
-                <span className="truncate pr-4">📂 {folder.name}</span>
                 <div className="flex items-center gap-2">
-                  {!folder.is_public && <span className="text-[10px]">🔒</span>}
+                  <span>📁</span>
+                  <span className="truncate w-32">{folder.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`w-1.5 h-1.5 rounded-full ${folder.is_public ? 'bg-green-500' : 'bg-amber-500'}`} title={folder.is_public ? "Public" : "Private"}></span>
                   {user.id === folder.user_id && (
                     <span onClick={(e) => handleFolderDelete(e, folder.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 cursor-pointer text-sm">🗑️</span>
                   )}
@@ -169,13 +169,12 @@ export default function DistributedFileHub() {
           <input type="text" placeholder="New folder..." className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-3 outline-none focus:border-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
           <div className="flex items-center gap-2 mb-4">
             <input type="checkbox" checked={folderIsPublic} onChange={e => setFolderIsPublic(e.target.checked)} id="fvis" className="rounded bg-black border-[#333]" />
-            <label htmlFor="fvis" className="text-[9px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">Public Group</label>
+            <label htmlFor="fvis" className="text-[9px] font-bold text-[#444] uppercase tracking-widest cursor-pointer underline">Public Group</label>
           </div>
           <button onClick={createFolder} className="w-full py-3 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc]">Create</button>
         </div>
       </aside>
 
-      {/* MAIN VIEW */}
       <main className="flex-1 overflow-y-auto p-16">
         <header className="flex justify-between items-end mb-16">
           <div>
@@ -184,16 +183,15 @@ export default function DistributedFileHub() {
             </h2>
             <p className="text-[#444] text-[10px] font-bold uppercase tracking-[0.3em] mt-2 italic">Node v4.5 Active</p>
           </div>
-          <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="px-6 py-2 border border-[#333] rounded-lg text-[10px] font-bold text-[#888] hover:text-white transition uppercase">Logout</button>
+          <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="px-6 py-2 border border-[#333] rounded-lg text-[10px] font-bold text-[#888] hover:text-white transition uppercase tracking-widest">Logout</button>
         </header>
 
-        {/* UPLOAD HERO */}
         <section className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[2.5rem] p-12 mb-20 shadow-2xl">
-          <h3 className="text-lg font-bold mb-2">Deploy to {selectedFolder ? 'Group' : 'Root'}</h3>
+          <h3 className="text-lg font-bold mb-2">Deploy Data</h3>
           <p className="text-[#444] text-xs mb-10 font-medium">Replicating metadata across distributed nodes.</p>
           <div className="flex flex-col md:flex-row items-center gap-6">
             <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#444] file:mr-6 file:py-2.5 file:px-8 file:rounded-lg file:border file:border-[#222] file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
-            <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-12 py-4 rounded-xl font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest disabled:opacity-20">
+            <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-12 py-4 rounded-xl font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">
               {uploading ? 'Wait' : 'Distribute'}
             </button>
           </div>
@@ -203,20 +201,23 @@ export default function DistributedFileHub() {
           </div>
         </section>
 
-        {/* EXPLORER GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
           {filesList.map(f => (
-            <div key={f.id} className="group bg-[#050505] p-6 rounded-2xl border border-[#151515] hover:border-[#444] transition-all duration-500">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-xl flex items-center justify-center text-[10px] font-bold uppercase group-hover:bg-white group-hover:text-black transition-all italic">
+            <div key={f.id} className="group bg-[#080808] p-6 rounded-2xl border border-[#222] hover:border-white transition-all duration-500 relative">
+              <div className="absolute top-4 right-4">
+                <span className={`text-[8px] font-black px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
+                  {f.is_public ? 'Public' : 'Private'}
+                </span>
+              </div>
+              <div className="flex justify-between items-start mb-6 pt-2">
+                <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-xl flex items-center justify-center text-[10px] font-bold uppercase group-hover:bg-white group-hover:text-black transition-all">
                   {f.file_name.split('.').pop()}
                 </div>
                 <div className="flex gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
                    <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="text-[#444] hover:text-white">💾</button>
                    {user.id === f.user_id && (
                      <>
-                       {/* VISIBILITY TOGGLE BUTTON */}
-                       <button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className="text-[#444] hover:text-blue-400 transition" title={f.is_public ? "Hide" : "Share"}>
+                       <button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`${f.is_public ? 'text-blue-500' : 'text-amber-500'} hover:scale-125 transition`}>
                          {f.is_public ? '🌐' : '🔒'}
                        </button>
                        <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="text-[#444] hover:text-red-500">🗑️</button>
@@ -225,12 +226,9 @@ export default function DistributedFileHub() {
                 </div>
               </div>
               <h4 className="font-bold text-sm truncate mb-1">{f.file_name}</h4>
-              <div className="flex items-center justify-between text-[9px] font-bold text-[#333] uppercase tracking-tighter">
+              <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase tracking-tighter">
                 <span className="text-[#555]">{f.owner_username}</span>
-                <div className="flex items-center gap-2">
-                  <span>{(f.file_size/1024).toFixed(1)} KB</span>
-                  {!f.is_public && <span className="text-amber-500">🔒</span>}
-                </div>
+                <span>{(f.file_size/1024).toFixed(1)} KB</span>
               </div>
             </div>
           ))}
