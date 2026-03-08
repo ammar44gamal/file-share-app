@@ -5,15 +5,11 @@ import { supabase } from '../lib/supabase';
 
 export default function DistributedFileHub() {
   const [user, setUser] = useState<any>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  
   const [filesList, setFilesList] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   
+  // States for new items
   const [newFolderName, setNewFolderName] = useState('');
   const [folderIsPublic, setFolderIsPublic] = useState(true);
   const [file, setFile] = useState<File | null>(null);
@@ -49,6 +45,17 @@ export default function DistributedFileHub() {
     setFilesList(data || []);
   };
 
+  // --- NEW: Toggle Visibility Logic ---
+  const toggleFilePrivacy = async (fileId: string, currentStatus: boolean) => {
+    const { error } = await supabase
+      .from('files')
+      .update({ is_public: !currentStatus })
+      .eq('id', fileId);
+
+    if (error) alert("Could not update privacy: " + error.message);
+    else fetchFiles(); // Refresh the list to show the new icon
+  };
+
   const createFolder = async () => {
     if (!newFolderName || !user) return;
     await supabase.from('folders').insert([{ 
@@ -66,20 +73,6 @@ export default function DistributedFileHub() {
     await supabase.from('folders').delete().eq('id', folderId);
     if (selectedFolder === folderId) setSelectedFolder(null);
     fetchFolders();
-  };
-
-  const handleAuth = async () => {
-    if (isSignUp) {
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return alert(error.message);
-      if (data.user) {
-        await supabase.from('profiles').insert([{ id: data.user.id, username }]);
-        alert("Registration success! Check your email.");
-      }
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return alert(error.message);
-    }
   };
 
   const handleUpload = async () => {
@@ -117,34 +110,12 @@ export default function DistributedFileHub() {
     fetchFiles();
   };
 
-  // FIX: Explicitly styled login card to prevent background bleeding
-  if (!user) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-black p-6">
-        <div className="bg-[#111] border border-[#333] p-10 rounded-2xl shadow-2xl w-full max-w-md z-50">
-          <h2 className="text-2xl font-bold mb-8 text-center text-white tracking-tight">
-            {isSignUp ? 'Create Account' : 'Secure Login'}
-          </h2>
-          {isSignUp && (
-            <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setUsername(e.target.value)} />
-          )}
-          <input type="email" placeholder="Email" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setEmail(e.target.value)} />
-          <input type="password" placeholder="Password" className="w-full p-4 mb-8 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setPassword(e.target.value)} />
-          <button onClick={handleAuth} className="w-full bg-white text-black py-4 rounded-lg font-bold hover:bg-[#ccc] transition uppercase tracking-widest text-xs">
-            {isSignUp ? 'Register' : 'Log In'}
-          </button>
-          <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white">
-            {isSignUp ? 'Back to Login' : 'Need an account? Sign Up'}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (!user) return <div className="bg-black h-screen flex items-center justify-center text-white">Please Log In</div>;
 
   return (
-    <div className="flex h-screen bg-black text-white">
+    <div className="flex h-screen bg-black text-white font-sans">
       {/* SIDEBAR */}
-      <aside className="w-72 bg-black border-r border-[#222] p-8 flex flex-col">
+      <aside className="w-72 bg-black border-r border-[#222] p-8 flex flex-col shadow-2xl">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
           <h1 className="font-bold text-xl tracking-tight">FileHub</h1>
@@ -154,6 +125,7 @@ export default function DistributedFileHub() {
           <button onClick={() => setSelectedFolder(null)} className={`w-full text-left px-4 py-3 rounded-xl text-sm transition ${!selectedFolder ? 'bg-[#111] border border-[#333]' : 'text-[#888] hover:text-white'}`}>
             Global Dashboard
           </button>
+          
           <div className="pt-8 pb-3 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
           {folders.map(folder => (
             <div key={folder.id} className="group relative">
@@ -171,60 +143,73 @@ export default function DistributedFileHub() {
         </nav>
 
         <div className="mt-auto pt-6 border-t border-[#222]">
-          <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-3 outline-none focus:border-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
-          <div className="flex items-center gap-2 mb-4">
-            <input type="checkbox" checked={folderIsPublic} onChange={e => setFolderIsPublic(e.target.checked)} id="fvis" className="rounded bg-black border-[#333]" />
-            <label htmlFor="fvis" className="text-[9px] font-bold text-[#888] uppercase tracking-widest cursor-pointer">Public Folder</label>
+          <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-3 outline-none focus:border-white transition" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
+          <div className="flex items-center gap-2 mb-4 px-1">
+            <input type="checkbox" checked={folderIsPublic} onChange={e => setFolderIsPublic(e.target.checked)} id="fvis" className="rounded bg-black border-[#333] cursor-pointer" />
+            <label htmlFor="fvis" className="text-[9px] font-bold text-[#888] uppercase tracking-widest cursor-pointer hover:text-white transition">Public Folder</label>
           </div>
-          <button onClick={createFolder} className="w-full py-3 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc] transition">Create Group</button>
+          <button onClick={createFolder} className="w-full py-3 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc] transition active:scale-95 shadow-lg shadow-white/5">Create Group</button>
         </div>
       </aside>
 
-      {/* MAIN VIEW */}
+      {/* MAIN CONTENT */}
       <main className="flex-1 overflow-y-auto p-16">
         <header className="flex justify-between items-end mb-16">
           <div>
             <h2 className="text-4xl font-bold tracking-tighter">
               {selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Directory'}
             </h2>
-            <p className="text-[#666] text-xs font-bold uppercase tracking-[0.3em] mt-2 italic">Node v4.0 Shared Architecture</p>
+            <p className="text-[#666] text-xs font-bold uppercase tracking-[0.3em] mt-2 italic">Node v4.5 Dynamic Permissions</p>
           </div>
           <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="px-6 py-2 border border-[#333] rounded-lg text-[10px] font-bold text-[#888] hover:text-white transition uppercase tracking-widest">Sign Out</button>
         </header>
 
-        {/* UPLOAD HERO */}
+        {/* UPLOAD SECTION */}
         <section className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-3xl p-12 mb-20 shadow-2xl relative overflow-hidden group">
           <div className="relative z-10">
-            <h3 className="text-lg font-bold mb-2">Deploy Data to {selectedFolder ? 'Group' : 'Root'}</h3>
-            <p className="text-[#666] text-sm mb-10 max-w-sm font-medium">Replicating metadata across distributed index nodes.</p>
+            <h3 className="text-lg font-bold mb-2 text-white">Deploy Data to {selectedFolder ? 'Group' : 'Root'}</h3>
+            <p className="text-[#666] text-sm mb-10 max-w-sm font-medium">Assign visibility at upload; modify anytime via the explorer.</p>
+            
             <div className="flex flex-col md:flex-row items-center gap-6">
               <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#666] file:mr-6 file:py-2.5 file:px-8 file:rounded-lg file:border file:border-[#222] file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
-              <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-12 py-4 rounded-xl font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest disabled:opacity-20">
+              <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-12 py-4 rounded-xl font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest disabled:opacity-20 active:scale-95">
                 {uploading ? 'Transmitting' : 'Distribute'}
               </button>
             </div>
             <div className="mt-8 flex items-center gap-3">
-              <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-              <label htmlFor="pvis" className="text-[10px] font-bold text-[#666] uppercase tracking-widest cursor-pointer">Visibility: {isPublic ? 'Public' : 'Restricted'}</label>
+              <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333] cursor-pointer" />
+              <label htmlFor="pvis" className="text-[10px] font-bold text-[#666] uppercase tracking-widest cursor-pointer hover:text-white transition">Initial Visibility: {isPublic ? 'Public' : 'Restricted'}</label>
             </div>
           </div>
           <div className="absolute -bottom-20 -right-20 w-80 h-80 bg-white/5 rounded-full blur-[100px] group-hover:scale-110 transition-transform duration-1000"></div>
         </section>
 
-        {/* GRID EXPLORER */}
+        {/* EXPLORER GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
           {filesList.map(f => (
-            <div key={f.id} className="group bg-[#050505] p-6 rounded-2xl border border-[#151515] hover:border-[#444] transition-all duration-500">
+            <div key={f.id} className="group bg-[#050505] p-6 rounded-2xl border border-[#151515] hover:border-[#444] transition-all duration-500 hover:shadow-2xl hover:shadow-white/5">
               <div className="flex justify-between items-start mb-6">
                 <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-xl flex items-center justify-center text-[10px] font-bold uppercase group-hover:bg-white group-hover:text-black transition-all">
                   {f.file_name.split('.').pop()}
                 </div>
                 <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                   <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="text-[#888] hover:text-white">💾</button>
-                   {user.id === f.user_id && <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="text-[#444] hover:text-red-500">🗑️</button>}
+                   <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="text-[#888] hover:text-white transition transform hover:scale-110">💾</button>
+                   {user.id === f.user_id && (
+                     <>
+                       {/* TOGGLE VISIBILITY BUTTON */}
+                       <button 
+                         onClick={() => toggleFilePrivacy(f.id, f.is_public)} 
+                         className="text-[#888] hover:text-blue-400 transition transform hover:scale-110"
+                         title={f.is_public ? "Make Private" : "Make Public"}
+                       >
+                         {f.is_public ? '🌐' : '🔒'}
+                       </button>
+                       <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="text-[#444] hover:text-red-500 transition transform hover:scale-110">🗑️</button>
+                     </>
+                   )}
                 </div>
               </div>
-              <h4 className="font-bold text-sm truncate mb-1">{f.file_name}</h4>
+              <h4 className="font-bold text-sm truncate mb-1 text-slate-200">{f.file_name}</h4>
               <div className="flex items-center justify-between text-[10px] font-bold text-[#444] uppercase tracking-tighter">
                 <span className="text-[#888]">{f.owner_username}</span>
                 <div className="flex items-center gap-2">
