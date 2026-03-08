@@ -21,7 +21,6 @@ export default function DistributedFileHub() {
       setUser(session?.user ?? null);
     });
 
-    // Listen for auth changes to update state immediately
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
@@ -39,28 +38,29 @@ export default function DistributedFileHub() {
     setFilesList(data || []);
   };
 
-  // 2. Secure Login / Sign Up Logic
+  // 2. Secure Login / Sign Up Logic with Unique Identity
   const handleAuth = async () => {
     if (isSignUp) {
-      // Create user + unique username in profiles table
+      if (!username) return alert("Please choose a unique username.");
+      
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) return alert(error.message);
       
       if (data.user) {
+        // Link the Unique Identity to the Auth User
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([{ id: data.user.id, username: username }]);
         
         if (profileError) {
-          alert("Signup successful, but username might be taken or error occurred.");
+          alert("Account created, but username might be taken. You can update it later.");
         } else {
-          alert("Check your email for confirmation!");
+          alert("Registration successful! Please check your email to confirm.");
         }
       }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return alert(error.message);
-      // No need for reload, onAuthStateChange handles it
     }
   };
 
@@ -69,7 +69,6 @@ export default function DistributedFileHub() {
     if (!file || !user) return;
     setUploading(true);
     try {
-      // Generate unique name for Storage Node
       const fileName = `${Math.random()}.${file.name.split('.').pop()}`;
       const { error: storageError } = await supabase.storage
         .from('user-files')
@@ -77,20 +76,22 @@ export default function DistributedFileHub() {
 
       if (storageError) throw storageError;
 
-      // FETCH USERNAME: Replaces "Anonymous" with real Identity
+      // Fetch the real username from your profiles table
       const { data: profile } = await supabase
         .from('profiles')
         .select('username')
         .eq('id', user.id)
         .single();
 
-      // INSERT METADATA: Enforces Privacy Choice
+      // Fallback: If no profile exists, use the email prefix instead of "Unknown"
+      const displayName = profile?.username || user.email.split('@')[0];
+
       const { error: dbError } = await supabase.from('files').insert([{ 
         file_name: file.name, 
         file_size: file.size, 
         storage_path: fileName,
-        is_public: isPublic, // Value from the checkbox
-        owner_username: profile?.username || 'Unknown User',
+        is_public: isPublic, 
+        owner_username: displayName,
         user_id: user.id
       }]);
 
@@ -113,8 +114,7 @@ export default function DistributedFileHub() {
     if (data) {
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
-      a.href = url; 
-      a.download = name; 
+      a.href = url; a.download = name; 
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -132,7 +132,6 @@ export default function DistributedFileHub() {
     }
   };
 
-  // --- AUTH UI ---
   if (!user) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-6">
@@ -142,27 +141,24 @@ export default function DistributedFileHub() {
           </h2>
           {isSignUp && (
             <input 
-              type="text" 
-              placeholder="Unique Username" 
+              type="text" placeholder="Unique Username" 
               className="w-full p-3 mb-4 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" 
               onChange={e => setUsername(e.target.value)} 
             />
           )}
           <input 
-            type="email" 
-            placeholder="Email Address" 
+            type="email" placeholder="Email Address" 
             className="w-full p-3 mb-4 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" 
             onChange={e => setEmail(e.target.value)} 
           />
           <input 
-            type="password" 
-            placeholder="Password" 
+            type="password" placeholder="Password" 
             className="w-full p-3 mb-6 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" 
             onChange={e => setPassword(e.target.value)} 
           />
           <button 
             onClick={handleAuth} 
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition duration-200"
+            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition"
           >
             {isSignUp ? 'Register' : 'Sign In'}
           </button>
@@ -177,7 +173,6 @@ export default function DistributedFileHub() {
     );
   }
 
-  // --- MAIN APP UI ---
   return (
     <div className="flex flex-col items-center min-h-screen p-6 bg-gray-50 text-gray-900">
       <div className="w-full max-w-3xl flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm border">
@@ -187,28 +182,23 @@ export default function DistributedFileHub() {
         </div>
         <button 
           onClick={() => supabase.auth.signOut()} 
-          className="bg-red-50 text-red-500 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100 transition"
+          className="bg-red-50 text-red-500 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100"
         >
           Logout
         </button>
       </div>
 
-      {/* Upload Module */}
       <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md mb-10 border border-blue-100">
         <label className="block text-sm font-bold text-gray-700 mb-2">Select File</label>
         <input 
-          type="file" 
-          onChange={e => setFile(e.target.files?.[0] || null)} 
-          className="mb-6 w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" 
+          type="file" onChange={e => setFile(e.target.files?.[0] || null)} 
+          className="mb-6 w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-blue-50 file:text-blue-700" 
         />
         
         <div className="flex items-center gap-3 mb-6 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
           <input 
-            type="checkbox" 
-            checked={isPublic} 
-            onChange={e => setIsPublic(e.target.checked)} 
-            id="privacy-toggle"
-            className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500" 
+            type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="privacy-toggle"
+            className="w-5 h-5 rounded border-gray-300 text-blue-600" 
           />
           <label htmlFor="privacy-toggle" className="text-sm font-semibold text-gray-600 cursor-pointer">
             Make file public (everyone can see)
@@ -216,15 +206,13 @@ export default function DistributedFileHub() {
         </div>
 
         <button 
-          onClick={handleUpload} 
-          disabled={uploading || !file} 
-          className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 shadow-md active:scale-95 transition"
+          onClick={handleUpload} disabled={uploading || !file} 
+          className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 disabled:bg-gray-200 shadow-md active:scale-95"
         >
           {uploading ? 'PROCESSING...' : 'UPLOAD TO SERVER'}
         </button>
       </div>
 
-      {/* File Explorer */}
       <div className="w-full max-w-3xl space-y-4">
         <div className="flex items-center justify-between border-b border-gray-200 pb-2">
           <h3 className="text-lg font-black text-gray-700 uppercase tracking-tight">Global File Explorer</h3>
@@ -240,7 +228,7 @@ export default function DistributedFileHub() {
             </div>
           ) : (
             filesList.map(f => (
-              <div key={f.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center hover:shadow-md transition duration-200">
+              <div key={f.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center hover:shadow-md transition">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 font-bold text-[10px]">
                     {f.file_name.split('.').pop()?.toUpperCase()}
@@ -259,14 +247,14 @@ export default function DistributedFileHub() {
                 <div className="flex gap-2">
                   <button 
                     onClick={() => handleDownload(f.storage_path, f.file_name)} 
-                    className="text-blue-600 text-xs font-black px-4 py-2 hover:bg-blue-50 rounded-lg transition"
+                    className="text-blue-600 text-xs font-black px-4 py-2 hover:bg-blue-50 rounded-lg"
                   >
                     DOWNLOAD
                   </button>
                   {user.id === f.user_id && (
                     <button 
                       onClick={() => handleDelete(f.id, f.storage_path)} 
-                      className="text-red-500 text-xs font-black px-4 py-2 hover:bg-red-50 rounded-lg transition"
+                      className="text-red-500 text-xs font-black px-4 py-2 hover:bg-red-50 rounded-lg"
                     >
                       DELETE
                     </button>
