@@ -1,270 +1,164 @@
-'use client';
-
-import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+// ... keep your imports ...
 
 export default function DistributedFileHub() {
-  const [user, setUser] = useState<any>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [username, setUsername] = useState('');
-  const [isSignUp, setIsSignUp] = useState(false);
-  
-  const [file, setFile] = useState<File | null>(null);
-  const [isPublic, setIsPublic] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [filesList, setFilesList] = useState<any[]>([]);
+  // New States
+  const [folders, setFolders] = useState<any[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
 
-  // 1. Check for Session Token and load files
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
+  // Fetch folders along with files
+  const fetchFolders = async () => {
+    const { data } = await supabase.from('folders').select('*').order('name');
+    setFolders(data || []);
+  };
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+  const createFolder = async () => {
+    if (!newFolderName) return;
+    await supabase.from('folders').insert([{ name: newFolderName, user_id: user.id }]);
+    setNewFolderName('');
+    fetchFolders();
+  };
 
-    fetchFiles();
-
-    return () => subscription.unsubscribe();
-  }, []);
-
+  // Modify fetchFiles to filter by folder if needed
   const fetchFiles = async () => {
-    const { data } = await supabase
-      .from('files')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let query = supabase.from('files').select('*').order('created_at', { ascending: false });
+    if (selectedFolder) query = query.eq('folder_id', selectedFolder);
+    const { data } = await query;
     setFilesList(data || []);
   };
 
-  // 2. Secure Login / Sign Up Logic with Unique Identity
-  const handleAuth = async () => {
-    if (isSignUp) {
-      if (!username) return alert("Please choose a unique username.");
-      
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return alert(error.message);
-      
-      if (data.user) {
-        // Link the Unique Identity to the Auth User
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert([{ id: data.user.id, username: username }]);
-        
-        if (profileError) {
-          alert("Account created, but username might be taken. You can update it later.");
-        } else {
-          alert("Registration successful! Please check your email to confirm.");
-        }
-      }
-    } else {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return alert(error.message);
-    }
-  };
-
-  // 3. Upload with Identity and Privacy Check
-  const handleUpload = async () => {
-    if (!file || !user) return;
-    setUploading(true);
-    try {
-      const fileName = `${Math.random()}.${file.name.split('.').pop()}`;
-      const { error: storageError } = await supabase.storage
-        .from('user-files')
-        .upload(fileName, file);
-
-      if (storageError) throw storageError;
-
-      // Fetch the real username from your profiles table
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('username')
-        .eq('id', user.id)
-        .single();
-
-      // Fallback: If no profile exists, use the email prefix instead of "Unknown"
-      const displayName = profile?.username || user.email.split('@')[0];
-
-      const { error: dbError } = await supabase.from('files').insert([{ 
-        file_name: file.name, 
-        file_size: file.size, 
-        storage_path: fileName,
-        is_public: isPublic, 
-        owner_username: displayName,
-        user_id: user.id
-      }]);
-
-      if (dbError) throw dbError;
-
-      setFile(null);
+  useEffect(() => {
+    if (user) {
+      fetchFolders();
       fetchFiles();
-      alert("Upload successful!");
-    } catch (err) {
-      console.error(err);
-      alert("Upload failed. Check storage permissions.");
-    } finally { 
-      setUploading(false); 
     }
-  };
+  }, [user, selectedFolder]);
 
-  const handleDownload = async (path: string, name: string) => {
-    const { data, error } = await supabase.storage.from('user-files').download(path);
-    if (error) return alert("Download failed");
-    if (data) {
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url; a.download = name; 
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-  };
+  // ... (Keep handleUpload but add folder_id: selectedFolder to the insert) ...
 
-  const handleDelete = async (id: string, path: string) => {
-    if (!confirm("Delete this file permanently?")) return;
-    try {
-      await supabase.storage.from('user-files').remove([path]);
-      await supabase.from('files').delete().eq('id', id);
-      fetchFiles();
-    } catch (err) {
-      alert("Delete failed");
-    }
-  };
-
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-6">
-        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-          <h2 className="text-2xl font-bold mb-6 text-center text-blue-600">
-            {isSignUp ? 'Create Account' : 'Secure Login'}
-          </h2>
-          {isSignUp && (
-            <input 
-              type="text" placeholder="Unique Username" 
-              className="w-full p-3 mb-4 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" 
-              onChange={e => setUsername(e.target.value)} 
-            />
-          )}
-          <input 
-            type="email" placeholder="Email Address" 
-            className="w-full p-3 mb-4 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" 
-            onChange={e => setEmail(e.target.value)} 
-          />
-          <input 
-            type="password" placeholder="Password" 
-            className="w-full p-3 mb-6 border rounded-lg focus:ring-2 focus:ring-blue-400 outline-none" 
-            onChange={e => setPassword(e.target.value)} 
-          />
-          <button 
-            onClick={handleAuth} 
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition"
-          >
-            {isSignUp ? 'Register' : 'Sign In'}
-          </button>
-          <p 
-            onClick={() => setIsSignUp(!isSignUp)} 
-            className="text-center mt-4 text-sm text-blue-500 cursor-pointer hover:underline"
-          >
-            {isSignUp ? 'Already have an account? Login' : 'Need an account? Sign Up'}
-          </p>
-        </div>
-      </div>
-    );
-  }
+  if (!user) { /* Keep your existing Login UI */ }
 
   return (
-    <div className="flex flex-col items-center min-h-screen p-6 bg-gray-50 text-gray-900">
-      <div className="w-full max-w-3xl flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm border">
-        <div>
-          <h1 className="text-2xl font-black text-blue-600">FILE HUB PRO</h1>
-          <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Distributed Node</p>
+    <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans">
+      {/* SIDEBAR */}
+      <aside className="w-64 bg-white border-r border-slate-200 p-6 flex flex-col">
+        <div className="flex items-center gap-3 mb-10">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">F</div>
+          <h1 className="font-black text-xl tracking-tight text-slate-800">FileHub</h1>
         </div>
-        <button 
-          onClick={() => supabase.auth.signOut()} 
-          className="bg-red-50 text-red-500 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-100"
-        >
-          Logout
-        </button>
-      </div>
 
-      <div className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md mb-10 border border-blue-100">
-        <label className="block text-sm font-bold text-gray-700 mb-2">Select File</label>
-        <input 
-          type="file" onChange={e => setFile(e.target.files?.[0] || null)} 
-          className="mb-6 w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-blue-50 file:text-blue-700" 
-        />
-        
-        <div className="flex items-center gap-3 mb-6 p-3 bg-gray-50 rounded-lg border border-dashed border-gray-300">
+        <nav className="flex-1 space-y-1">
+          <button 
+            onClick={() => setSelectedFolder(null)}
+            className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-bold transition ${!selectedFolder ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}
+          >
+            All Files
+          </button>
+          
+          <div className="pt-4 pb-2 underline uppercase text-[10px] font-black text-slate-400 tracking-widest">My Folders</div>
+          {folders.map(folder => (
+            <button 
+              key={folder.id}
+              onClick={() => setSelectedFolder(folder.id)}
+              className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-bold transition ${selectedFolder === folder.id ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:bg-slate-50'}`}
+            >
+              📁 {folder.name}
+            </button>
+          ))}
+        </nav>
+
+        <div className="mt-4 pt-4 border-t">
           <input 
-            type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="privacy-toggle"
-            className="w-5 h-5 rounded border-gray-300 text-blue-600" 
+            type="text" 
+            placeholder="New folder..." 
+            className="w-full text-xs p-2 border rounded-lg mb-2"
+            value={newFolderName}
+            onChange={e => setNewFolderName(e.target.value)}
           />
-          <label htmlFor="privacy-toggle" className="text-sm font-semibold text-gray-600 cursor-pointer">
-            Make file public (everyone can see)
-          </label>
+          <button onClick={createFolder} className="w-full py-2 bg-slate-800 text-white text-xs font-bold rounded-lg hover:bg-black transition">
+            + Create Folder
+          </button>
         </div>
+      </aside>
 
-        <button 
-          onClick={handleUpload} disabled={uploading || !file} 
-          className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold hover:bg-blue-700 disabled:bg-gray-200 shadow-md active:scale-95"
-        >
-          {uploading ? 'PROCESSING...' : 'UPLOAD TO SERVER'}
-        </button>
-      </div>
+      {/* MAIN CONTENT */}
+      <main className="flex-1 overflow-y-auto p-10">
+        <header className="flex justify-between items-center mb-10">
+          <div>
+            <h2 className="text-3xl font-black text-slate-800">
+              {selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Dashboard'}
+            </h2>
+            <p className="text-slate-400 text-sm font-medium">Manage your distributed storage nodes</p>
+          </div>
+          <button onClick={() => supabase.auth.signOut()} className="px-5 py-2 border border-slate-200 rounded-full text-xs font-bold text-slate-500 hover:bg-red-50 hover:text-red-500 transition-all">
+            Log out
+          </button>
+        </header>
 
-      <div className="w-full max-w-3xl space-y-4">
-        <div className="flex items-center justify-between border-b border-gray-200 pb-2">
-          <h3 className="text-lg font-black text-gray-700 uppercase tracking-tight">Global File Explorer</h3>
-          <span className="text-[10px] font-bold bg-blue-100 text-blue-600 px-2 py-1 rounded">
-            {filesList.length} FILES TOTAL
-          </span>
-        </div>
-
-        <div className="grid gap-4">
-          {filesList.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-gray-300 text-gray-400 italic">
-              No accessible files found on the distributed storage.
+        {/* Upload Action Area */}
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+          <div className="md:col-span-2 bg-gradient-to-br from-blue-600 to-blue-700 rounded-3xl p-8 text-white shadow-2xl shadow-blue-200 relative overflow-hidden">
+            <div className="relative z-10">
+              <h3 className="text-xl font-bold mb-2">Upload New Assets</h3>
+              <p className="text-blue-100 text-sm mb-6 max-w-xs">Files uploaded here are distributed across our encrypted storage network.</p>
+              <input 
+                type="file" 
+                onChange={e => setFile(e.target.files?.[0] || null)}
+                className="block w-full text-sm text-blue-100 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-white file:text-blue-700 hover:file:bg-blue-50 cursor-pointer"
+              />
+              <div className="mt-6 flex items-center gap-4">
+                 <button 
+                  onClick={handleUpload} 
+                  disabled={uploading || !file}
+                  className="bg-white text-blue-700 px-8 py-3 rounded-2xl font-black text-sm hover:scale-105 transition-transform disabled:opacity-50"
+                >
+                  {uploading ? 'Transmitting...' : 'Upload Now'}
+                </button>
+                <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                  <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} className="rounded border-none text-blue-500 focus:ring-0" />
+                  Public Visibility
+                </label>
+              </div>
             </div>
-          ) : (
-            filesList.map(f => (
-              <div key={f.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center hover:shadow-md transition">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center text-blue-600 font-bold text-[10px]">
+            {/* Background Decorative Circles */}
+            <div className="absolute -bottom-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl"></div>
+          </div>
+
+          <div className="bg-white rounded-3xl p-8 border border-slate-100 shadow-sm flex flex-col justify-center items-center text-center">
+             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 mb-4">
+               <span className="text-2xl">📊</span>
+             </div>
+             <div className="text-2xl font-black text-slate-800">{filesList.length}</div>
+             <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Files Hosted</div>
+          </div>
+        </section>
+
+        {/* Files Grid */}
+        <section>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filesList.map(f => (
+              <div key={f.id} className="group bg-white p-5 rounded-3xl border border-slate-100 hover:border-blue-200 hover:shadow-xl hover:shadow-blue-50 transition-all duration-300">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-blue-600 font-black text-xs group-hover:bg-blue-600 group-hover:text-white transition-colors">
                     {f.file_name.split('.').pop()?.toUpperCase()}
                   </div>
-                  <div className="flex flex-col">
-                    <span className="font-bold text-gray-800 flex items-center gap-2">
-                      {f.file_name} 
-                      {!f.is_public && <span className="text-xs" title="Private">🔒</span>}
-                    </span>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-tighter">
-                      Owner: <span className="text-blue-500">{f.owner_username}</span> • {(f.file_size/1024).toFixed(1)} KB
-                    </span>
+                  <div className="flex gap-1">
+                     <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="p-2 hover:bg-blue-50 rounded-xl text-blue-600 transition-colors">💾</button>
+                     {user.id === f.user_id && <button onClick={() => handleDelete(f.id, f.storage_path)} className="p-2 hover:bg-red-50 rounded-xl text-red-500 transition-colors">🗑️</button>}
                   </div>
                 </div>
-                
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleDownload(f.storage_path, f.file_name)} 
-                    className="text-blue-600 text-xs font-black px-4 py-2 hover:bg-blue-50 rounded-lg"
-                  >
-                    DOWNLOAD
-                  </button>
-                  {user.id === f.user_id && (
-                    <button 
-                      onClick={() => handleDelete(f.id, f.storage_path)} 
-                      className="text-red-500 text-xs font-black px-4 py-2 hover:bg-red-50 rounded-lg"
-                    >
-                      DELETE
-                    </button>
-                  )}
+                <h4 className="font-bold text-slate-700 truncate mb-1">{f.file_name}</h4>
+                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase">
+                  <span>{f.owner_username}</span>
+                  <span>•</span>
+                  <span>{(f.file_size/1024).toFixed(1)} KB</span>
+                  {!f.is_public && <span className="ml-auto">🔒 Private</span>}
                 </div>
               </div>
-            ))
-          )}
-        </div>
-      </div>
+            ))}
+          </div>
+        </section>
+      </main>
     </div>
   );
 }
