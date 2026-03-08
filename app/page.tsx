@@ -5,16 +5,21 @@ import { supabase } from '../lib/supabase';
 
 export default function DistributedFileHub() {
   const [user, setUser] = useState<any>(null);
-  const [filesList, setFilesList] = useState<any[]>([]);
-  const [folders, setFolders] = useState<any[]>([]);
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
   
-  // States for new items
-  const [newFolderName, setNewFolderName] = useState('');
-  const [folderIsPublic, setFolderIsPublic] = useState(true); // New: Folder privacy
   const [file, setFile] = useState<File | null>(null);
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [filesList, setFilesList] = useState<any[]>([]);
+
+  // Folder states
+  const [folders, setFolders] = useState<any[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [folderIsPublic, setFolderIsPublic] = useState(true); // Shared folder toggle
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
@@ -23,12 +28,13 @@ export default function DistributedFileHub() {
   }, []);
 
   useEffect(() => {
-    fetchFolders();
-    fetchFiles();
+    if (user) {
+      fetchFolders();
+      fetchFiles();
+    }
   }, [user, selectedFolder]);
 
   const fetchFolders = async () => {
-    // Fetches all public folders + your own private folders
     const { data } = await supabase.from('folders').select('*').order('name');
     setFolders(data || []);
   };
@@ -38,7 +44,6 @@ export default function DistributedFileHub() {
     if (selectedFolder) {
       query = query.eq('folder_id', selectedFolder);
     } else {
-      // If no folder is selected, show "Top Level" public files
       query = query.is('folder_id', null);
     }
     const { data } = await query;
@@ -54,6 +59,20 @@ export default function DistributedFileHub() {
     }]);
     setNewFolderName('');
     fetchFolders();
+  };
+
+  const handleAuth = async () => {
+    if (isSignUp) {
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      if (error) return alert(error.message);
+      if (data.user) {
+        await supabase.from('profiles').insert([{ id: data.user.id, username }]);
+        alert("Check your email for confirmation!");
+      }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) return alert(error.message);
+    }
   };
 
   const handleUpload = async () => {
@@ -92,14 +111,37 @@ export default function DistributedFileHub() {
     fetchFiles();
   };
 
-  if (!user) return <div className="bg-black h-screen flex items-center justify-center text-white">Please Log In</div>;
+  // --- VERCEL DARK LOGIN FIX ---
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-black p-6">
+        <div className="bg-[#111] border border-[#333] p-10 rounded-2xl shadow-2xl w-full max-w-md">
+          <h2 className="text-2xl font-bold mb-8 text-center text-white tracking-tight">
+            {isSignUp ? 'Create Account' : 'Secure Login'}
+          </h2>
+          {isSignUp && (
+            <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setUsername(e.target.value)} />
+          )}
+          <input type="email" placeholder="Email" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setEmail(e.target.value)} />
+          <input type="password" placeholder="Password" className="w-full p-4 mb-8 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setPassword(e.target.value)} />
+          <button onClick={handleAuth} className="w-full bg-white text-black py-4 rounded-lg font-bold hover:bg-[#ccc] transition uppercase tracking-widest text-xs">
+            {isSignUp ? 'Register' : 'Enter Hub'}
+          </button>
+          <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white transition">
+            {isSignUp ? 'Already have an account? Login' : 'Need an account? Sign up'}
+          </p>
+        </div>
+      </div>
+    );
+  }
 
+  // --- VERCEL STYLE DASHBOARD ---
   return (
     <div className="flex h-screen bg-black text-white selection:bg-white selection:text-black">
       {/* SIDEBAR */}
       <aside className="w-72 bg-black border-r border-[#222] p-8 flex flex-col">
         <div className="flex items-center gap-3 mb-12">
-          <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
+          <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black text-lg">F</div>
           <h1 className="font-bold text-xl tracking-tight">FileHub</h1>
         </div>
 
@@ -135,15 +177,15 @@ export default function DistributedFileHub() {
             <h2 className="text-4xl font-bold tracking-tighter">
               {selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Directory'}
             </h2>
-            <p className="text-[#666] text-xs font-bold uppercase tracking-[0.3em] mt-2 italic">Node v4.0 Shared Infrastructure</p>
+            <p className="text-[#666] text-xs font-bold uppercase tracking-[0.3em] mt-2 italic">Distributed Architecture Node v4.0</p>
           </div>
-          <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="px-6 py-2 border border-[#333] rounded-lg text-[10px] font-bold text-[#888] hover:text-white transition uppercase tracking-widest">Sign Out</button>
+          <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="px-6 py-2 border border-[#333] rounded-lg text-[10px] font-bold text-[#888] hover:text-white transition uppercase tracking-widest">Exit</button>
         </header>
 
         {/* UPLOAD SECTION */}
         <section className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-3xl p-12 mb-20 shadow-2xl">
           <h3 className="text-lg font-bold mb-2">Deploy Data to {selectedFolder ? 'Group' : 'Root'}</h3>
-          <p className="text-[#666] text-sm mb-10 max-w-sm font-medium">Files uploaded to public folders are accessible by all authorized network nodes.</p>
+          <p className="text-[#666] text-sm mb-10 max-w-sm font-medium">Files in public folders can be accessed across nodes by authorized users.</p>
           
           <div className="flex flex-col md:flex-row items-center gap-6">
             <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#666] file:mr-6 file:py-2.5 file:px-8 file:rounded-lg file:border file:border-[#222] file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
@@ -166,8 +208,8 @@ export default function DistributedFileHub() {
                   {f.file_name.split('.').pop()}
                 </div>
                 <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                   <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="text-[#888] hover:text-white">💾</button>
-                   {user.id === f.user_id && <button onClick={() => handleDelete(f.id, f.storage_path)} className="text-[#444] hover:text-red-500">🗑️</button>}
+                   <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="text-[#888] hover:text-white transition">💾</button>
+                   {user.id === f.user_id && <button onClick={() => handleDelete(f.id, f.storage_path)} className="text-[#444] hover:text-red-500 transition">🗑️</button>}
                 </div>
               </div>
               <h4 className="font-bold text-sm truncate mb-1">{f.file_name}</h4>
@@ -175,7 +217,7 @@ export default function DistributedFileHub() {
                 <span className="text-[#888]">{f.owner_username}</span>
                 <div className="flex items-center gap-2">
                   <span>{(f.file_size/1024).toFixed(1)} KB</span>
-                  {!f.is_public && <span className="text-amber-500">🔒</span>}
+                  {!f.is_public && <span className="text-amber-500 font-black">🔒</span>}
                 </div>
               </div>
             </div>
