@@ -20,9 +20,24 @@ export default function DistributedFileHub() {
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
 
+  // New Identity Management States
+  const [profileName, setProfileName] = useState('User');
+  const [showAccountMenu, setShowAccountMenu] = useState(false);
+
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+        fetchProfile(session.user.id);
+      }
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (currentUser) fetchProfile(currentUser.id);
+    });
+
     return () => subscription.unsubscribe();
   }, []);
 
@@ -32,6 +47,11 @@ export default function DistributedFileHub() {
       fetchFiles();
     }
   }, [user, selectedFolder]);
+
+  const fetchProfile = async (uid: string) => {
+    const { data } = await supabase.from('profiles').select('username').eq('id', uid).single();
+    if (data) setProfileName(data.username);
+  };
 
   const fetchFolders = async () => {
     const { data } = await supabase.from('folders').select('*').order('name');
@@ -113,6 +133,35 @@ export default function DistributedFileHub() {
     fetchFiles();
   };
 
+  // --- IDENTITY MANAGEMENT ACTIONS ---
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    window.location.reload(); 
+  };
+
+  const handleChangePassword = async () => {
+    const newPassword = prompt("Enter your new secure password:");
+    if (!newPassword) return;
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) alert(error.message);
+    else alert("Password updated successfully!");
+  };
+
+  const handlePermanentSignOut = async () => {
+    const confirmDelete = confirm("CRITICAL: This will permanently delete your account and all your uploaded data. You will need to re-register to return. Proceed?");
+    if (!confirmDelete) return;
+    
+    // Deleting the profile triggers the cascading delete for all files
+    const { error } = await supabase.from('profiles').delete().eq('id', user.id);
+    if (!error) {
+      alert("Identity and data purged from the network.");
+      handleLogout();
+    } else {
+      alert("Purge failed. Check network status.");
+    }
+  };
+
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black p-6">
@@ -175,15 +224,46 @@ export default function DistributedFileHub() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-16">
-        <header className="flex justify-between items-end mb-16">
-          <div>
-            <h2 className="text-4xl font-bold tracking-tighter">
-              {selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Directory'}
-            </h2>
-            <p className="text-[#444] text-[10px] font-bold uppercase tracking-[0.3em] mt-2 italic">Node v4.5 Active</p>
-          </div>
-          <button onClick={() => supabase.auth.signOut().then(() => window.location.reload())} className="px-6 py-2 border border-[#333] rounded-lg text-[10px] font-bold text-[#888] hover:text-white transition uppercase tracking-widest">Logout</button>
+      <main className="flex-1 overflow-y-auto p-16 relative">
+        {/* TOP RIGHT IDENTITY MENU */}
+        <div className="absolute top-10 right-10 z-50">
+          <button 
+            onClick={() => setShowAccountMenu(!showAccountMenu)}
+            className="w-10 h-10 rounded-full border border-[#333] bg-[#111] flex items-center justify-center hover:border-white transition-all overflow-hidden shadow-lg shadow-white/5"
+          >
+            <span className="text-xs font-black">{profileName[0]?.toUpperCase()}</span>
+          </button>
+
+          {showAccountMenu && (
+            <div className="absolute right-0 mt-4 w-64 bg-[#111] border border-[#333] rounded-2xl shadow-2xl p-6 text-center animate-in fade-in zoom-in duration-200">
+              <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center text-black text-2xl font-black mb-4">
+                {profileName[0]?.toUpperCase()}
+              </div>
+              <h3 className="text-lg font-bold text-white mb-1">Hi, {profileName}!</h3>
+              <p className="text-[9px] text-[#444] font-black uppercase tracking-[0.2em] mb-6 truncate px-2">{user.email}</p>
+              
+              <div className="space-y-2">
+                <button onClick={handleChangePassword} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest border border-[#222] rounded-xl hover:bg-[#1a1a1a] transition">
+                  Change Password
+                </button>
+                <button onClick={handleLogout} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest border border-[#222] rounded-xl hover:bg-[#1a1a1a] transition">
+                  Log Out
+                </button>
+                <div className="pt-4 mt-2 border-t border-[#222]">
+                  <button onClick={handlePermanentSignOut} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition">
+                    Sign Out (Delete)
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <header className="mb-16">
+          <h2 className="text-4xl font-bold tracking-tighter">
+            {selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Directory'}
+          </h2>
+          <p className="text-[#444] text-[10px] font-bold uppercase tracking-[0.3em] mt-2 italic">Node v4.5 Active</p>
         </header>
 
         <section className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[2.5rem] p-12 mb-20 shadow-2xl">
@@ -227,13 +307,4 @@ export default function DistributedFileHub() {
               </div>
               <h4 className="font-bold text-sm truncate mb-1">{f.file_name}</h4>
               <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase tracking-tighter">
-                <span className="text-[#555]">{f.owner_username}</span>
-                <span>{(f.file_size/1024).toFixed(1)} KB</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </main>
-    </div>
-  );
-}
+                <span className="text-[#555]">{f.owner_
