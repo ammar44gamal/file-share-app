@@ -20,6 +20,7 @@ export default function DistributedFileHub() {
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
 
+  // Identity States
   const [profileName, setProfileName] = useState('User');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
@@ -52,14 +53,21 @@ export default function DistributedFileHub() {
   }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
 
   const fetchProfile = async (currentUser: any) => {
-    // Explicitly fetching the username to fix the "Hi, User" issue
-    const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
-    const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
+    // 1. Fetching from the profiles table shown in your screenshot
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('username, is_admin')
+      .eq('id', currentUser.id)
+      .single();
     
+    const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
+
     if (data && data.username) {
+      console.log("Profile Data Found:", data.username); // Check your F12 console
       setProfileName(data.username); 
       setIsAdmin(data.is_admin || isMasterEmail); 
     } else {
+      // Fallback only if the table row is missing
       setProfileName(currentUser.email.split('@')[0]);
       setIsAdmin(isMasterEmail);
     }
@@ -209,7 +217,7 @@ export default function DistributedFileHub() {
           ))}
         </nav>
 
-        {/* SIDEBAR FOLDER SECTION - Fixed and Restored */}
+        {/* RESTORED SIDEBAR LAYOUT */}
         <div className="mt-auto pt-6 border-t border-[#222]">
           <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-2 focus:border-[#888] outline-none text-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
           <div className="flex items-center gap-2 mb-4">
@@ -272,20 +280,18 @@ export default function DistributedFileHub() {
               <h2 className="text-3xl font-bold tracking-tight text-white">{selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Explorer'}</h2>
               <p className="text-[#888] text-sm mt-1 italic">Node v4.5 Active</p>
             </header>
-            
             <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative overflow-hidden shadow-2xl">
               <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
               <p className="text-[#888] text-sm mb-8 leading-relaxed font-medium">Broadcast metadata across the cluster node.</p>
-              
               <div className="flex flex-col md:flex-row items-center gap-6">
                 <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:text-[10px] file:font-bold file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
                 <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
               </div>
 
-              {/* RESTORED VISIBILITY TOGGLE */}
+              {/* RESTORED PUBLIC/PRIVATE CHECKBOX */}
               <div className="mt-8 flex items-center gap-3">
                 <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-                <label htmlFor="pvis" className="text-[10px] font-bold text-[#888] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
+                <label htmlFor="pvis" className="text-[10px] font-bold text-[#888] uppercase tracking-widest cursor-pointer underline">PUBLIC GROUP</label>
               </div>
             </section>
 
