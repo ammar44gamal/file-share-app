@@ -52,20 +52,23 @@ export default function DistributedFileHub() {
     }
   }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
 
-  // Benefit of Usernames: Personalized Identity Mapping
   const fetchProfile = async (currentUser: any) => {
+    // Bridges Auth ID to the Profiles Identity Node
     const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
-    if (data) {
+    
+    if (data && data.username) {
       setProfileName(data.username); 
       setIsAdmin(data.is_admin || isMasterEmail); 
-    } else if (isMasterEmail) {
-      setIsAdmin(true);
+    } else {
+      // Fallback: Using email prefix if profile is missing
+      setProfileName(currentUser.email.split('@')[0]);
+      setIsAdmin(isMasterEmail);
     }
   };
 
   const fetchAdminStats = async () => {
-    // Maps to the custom SQL view we created
+    // Pulls the registry list with Identity vs Email
     const { data } = await supabase.from('admin_user_stats').select('*');
     setAdminUserList(data || []);
   };
@@ -97,7 +100,7 @@ export default function DistributedFileHub() {
 
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
-    if (!confirm("Delete collection and associated metadata?")) return;
+    if (!confirm("Delete folder?")) return;
     await supabase.from('folders').delete().eq('id', folderId);
     if (selectedFolder === folderId) setSelectedFolder(null);
     fetchFolders();
@@ -108,9 +111,10 @@ export default function DistributedFileHub() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) return alert(error.message);
       if (data.user) {
-        // Benefit: Storing the username during the Auth node creation
-        await supabase.from('profiles').insert([{ id: data.user.id, username }]);
+        // Syncs the new username to the profiles table immediately
+        await supabase.from('profiles').insert([{ id: data.user.id, username, is_admin: false }]);
       }
+      alert("Verification sent!");
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return alert(error.message);
@@ -153,7 +157,6 @@ export default function DistributedFileHub() {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     localStorage.clear();
-    sessionStorage.clear();
     window.location.reload(); 
   };
 
@@ -179,7 +182,7 @@ export default function DistributedFileHub() {
             {isSignUp ? 'Sign Up' : 'Log In'}
           </button>
           <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white transition">
-            {isSignUp ? 'Return to Login' : 'Create Account'}
+            {isSignUp ? 'Already have an account? Login' : 'Create Account'}
           </p>
         </div>
       </div>
@@ -193,29 +196,20 @@ export default function DistributedFileHub() {
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
           <h1 className="font-bold text-lg tracking-tight">FileHub</h1>
         </div>
-
         <nav className="flex-1 space-y-1 overflow-y-auto">
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
             Dashboard
           </button>
           {isAdmin && (
-            <button onClick={() => setViewingAdminPanel(true)} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>
+            <button onClick={() => setViewingAdminPanel(true)} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>
               🛠️ Admin
             </button>
           )}
           <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
           {folders.map(folder => (
-            <div key={folder.id} className="group relative">
-              <button onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
-                <span className="truncate pr-4">📂 {folder.name}</span>
-                <div className="flex items-center gap-2">
-                  <span className={`w-1.5 h-1.5 rounded-full ${folder.is_public ? 'bg-green-500' : 'bg-amber-500'}`}></span>
-                  {user.id === folder.user_id && (
-                    <span onClick={(e) => handleFolderDelete(e, folder.id)} className="opacity-0 group-hover:opacity-100 hover:text-red-500 cursor-pointer text-sm">🗑️</span>
-                  )}
-                </div>
-              </button>
-            </div>
+            <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
+              <span className="truncate pr-4">📂 {folder.name}</span>
+            </button>
           ))}
         </nav>
       </aside>
@@ -227,9 +221,13 @@ export default function DistributedFileHub() {
           </button>
           {showAccountMenu && (
             <div className="absolute right-0 mt-4 w-64 bg-[#111] border border-[#333] rounded-xl shadow-2xl p-6 text-center animate-in fade-in zoom-in duration-200">
-              <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center text-black text-2xl font-bold mb-4">{profileName[0]?.toUpperCase()}</div>
               
-              {/* BENEFIT: Human-readable username */}
+              {/* Dynamic Avatar Node */}
+              <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center text-black text-2xl font-bold mb-4">
+                {profileName[0]?.toUpperCase()}
+              </div>
+              
+              {/* Personalized Identity Greeting */}
               <h3 className="text-lg font-bold text-white mb-1">Hi, {profileName}!</h3>
               <p className="text-[10px] text-[#444] mb-6 truncate px-2">{user.email}</p>
               
@@ -244,22 +242,20 @@ export default function DistributedFileHub() {
         </div>
 
         {viewingAdminPanel ? (
-          /* NETWORK REGISTRY */
           <div className="animate-in slide-in-from-bottom-4 duration-500">
             <header className="mb-12">
-              <h2 className="text-3xl font-bold tracking-tight">Network Registry</h2>
+              <h2 className="text-3xl font-bold tracking-tight text-white">Network Registry</h2>
               <p className="text-[#888] text-sm mt-1 italic">Master list of active nodes</p>
             </header>
             <div className="bg-[#080808] border border-[#222] rounded-xl overflow-hidden shadow-2xl">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs text-white">
                 <thead className="bg-[#111] text-[#444] uppercase tracking-widest font-bold border-b border-[#222]">
                   <tr><th className="p-4">Identity</th><th className="p-4">Email Channel</th><th className="p-4">Joined</th></tr>
                 </thead>
                 <tbody className="divide-y divide-[#222]">
                   {adminUserList.map(u => (
                     <tr key={u.id} className="hover:bg-[#111] transition duration-300">
-                      {/* Pulls identity_name (Username) from SQL */}
-                      <td className="p-4 font-bold text-white">{u.identity_name || 'Anonymous Node'}</td>
+                      <td className="p-4 font-bold">{u.identity_name || 'Anonymous Node'}</td>
                       <td className="p-4 text-[#888]">{u.email_address}</td>
                       <td className="p-4 text-[#444] italic">{new Date(u.joined_date).toLocaleDateString()}</td>
                     </tr>
@@ -271,19 +267,15 @@ export default function DistributedFileHub() {
         ) : (
           <>
             <header className="mb-16">
-              <h2 className="text-3xl font-bold tracking-tight">{selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Explorer'}</h2>
+              <h2 className="text-3xl font-bold tracking-tight text-white">{selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Explorer'}</h2>
               <p className="text-[#888] text-sm mt-1 italic">Node v4.5 Active</p>
             </header>
             <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative overflow-hidden shadow-2xl">
               <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
-              <p className="text-[#888] text-sm mb-8 leading-relaxed font-medium">Broadcast metadata across the cluster node.</p>
+              <p className="text-[#888] text-sm mb-8 leading-relaxed font-medium opacity-70 italic">Broadcast metadata across the cluster node.</p>
               <div className="flex flex-col md:flex-row items-center gap-6">
                 <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:text-[10px] file:font-bold file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
                 <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
-              </div>
-              <div className="mt-8 flex items-center gap-3">
-                <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-                <label htmlFor="pvis" className="text-[10px] font-bold text-[#888] uppercase tracking-widest cursor-pointer underline">Public Visibility Node: {isPublic ? 'Active' : 'Secret'}</label>
               </div>
             </section>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
