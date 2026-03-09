@@ -20,7 +20,7 @@ export default function DistributedFileHub() {
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
 
-  // Identity States
+  // Identity & Admin States
   const [profileName, setProfileName] = useState('User');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
@@ -52,15 +52,11 @@ export default function DistributedFileHub() {
     }
   }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
 
-  // Updated Admin Rule: Recognize your existing email
   const fetchProfile = async (currentUser: any) => {
     const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
-    
-    // NEW MASTER ADMIN EMAIL: ammargamal44s@gmail.com
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
-    
     if (data) {
-      setProfileName(data.username); // Fix: Hi, {username}!
+      setProfileName(data.username); // Displays Hi, {username}
       setIsAdmin(data.is_admin || isMasterEmail); 
     } else if (isMasterEmail) {
       setIsAdmin(true);
@@ -68,12 +64,23 @@ export default function DistributedFileHub() {
   };
 
   const fetchAdminStats = async () => {
+    // Pulls from the bridged view of profiles + auth emails
     const { data } = await supabase.from('admin_user_stats').select('*');
     setAdminUserList(data || []);
   };
 
   const promoteUser = async (targetId: string) => {
     const { error } = await supabase.from('profiles').update({ is_admin: true }).eq('id', targetId);
+    if (!error) fetchAdminStats();
+  };
+
+  const demoteUser = async (targetId: string) => {
+    // Master Protection for ammargamal44s@gmail.com
+    if (targetId === user.id) {
+      alert("System integrity error: You cannot demote the root master node.");
+      return;
+    }
+    const { error } = await supabase.from('profiles').update({ is_admin: false }).eq('id', targetId);
     if (!error) fetchAdminStats();
   };
 
@@ -104,7 +111,7 @@ export default function DistributedFileHub() {
 
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
-    if (!confirm("Delete folder and all files?")) return;
+    if (!confirm("Delete folder and all distributed data blocks?")) return;
     await supabase.from('folders').delete().eq('id', folderId);
     if (selectedFolder === folderId) setSelectedFolder(null);
     fetchFolders();
@@ -227,7 +234,7 @@ export default function DistributedFileHub() {
           <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-2 focus:border-[#888] outline-none text-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
           <div className="flex items-center gap-2 mb-4">
             <input type="checkbox" checked={folderIsPublic} onChange={e => setFolderIsPublic(e.target.checked)} id="fvis" className="rounded bg-black border-[#333]" />
-            <label htmlFor="fvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer underline">Public Group</label>
+            <label htmlFor="fvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">Public Group</label>
           </div>
           <button onClick={createFolder} className="w-full py-2.5 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc]">New Folder</button>
         </div>
@@ -241,11 +248,8 @@ export default function DistributedFileHub() {
           {showAccountMenu && (
             <div className="absolute right-0 mt-4 w-64 bg-[#111] border border-[#333] rounded-xl shadow-2xl p-6 text-center animate-in fade-in zoom-in duration-200">
               <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center text-black text-2xl font-bold mb-4">{profileName[0]?.toUpperCase()}</div>
-              
-              {/* Corrected greeting and email display */}
               <h3 className="text-lg font-bold text-white mb-1">Hi, {profileName}!</h3>
               <p className="text-[10px] text-[#444] mb-6 truncate px-2">{user.email}</p>
-              
               <div className="space-y-2">
                 <button onClick={handleChangePassword} className="w-full py-2.5 text-xs font-bold border border-[#222] rounded-lg hover:bg-[#1a1a1a] transition uppercase tracking-widest">Password</button>
                 <div className="pt-2">
@@ -272,8 +276,16 @@ export default function DistributedFileHub() {
                     <tr key={u.id} className="hover:bg-[#111] transition duration-300">
                       <td className="p-4 font-bold">{u.username}</td>
                       <td className="p-4 text-[#888]">{u.email}</td>
-                      <td className="p-4 uppercase text-[9px] font-bold tracking-widest">{u.is_admin ? 'Admin' : 'User'}</td>
-                      <td className="p-4">{!u.is_admin && <button onClick={() => promoteUser(u.id)} className="px-3 py-1 bg-white text-black text-[9px] font-bold rounded hover:bg-[#ccc] transition">Promote</button>}</td>
+                      <td className="p-4 uppercase text-[9px] font-bold tracking-widest">{u.is_admin ? <span className="text-blue-500">Admin</span> : 'User'}</td>
+                      <td className="p-4">
+                        {u.is_admin ? (
+                           u.id !== user.id && (
+                             <button onClick={() => demoteUser(u.id)} className="px-4 py-2 bg-red-500/10 text-red-500 text-[9px] font-bold rounded-lg uppercase tracking-widest hover:bg-red-500/20 transition">Demote</button>
+                           )
+                        ) : (
+                          <button onClick={() => promoteUser(u.id)} className="px-4 py-2 bg-white text-black text-[9px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc] transition">Promote</button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -295,14 +307,14 @@ export default function DistributedFileHub() {
               </div>
               <div className="mt-8 flex items-center gap-3">
                 <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-                <label htmlFor="pvis" className="text-[10px] font-bold text-[#888] uppercase tracking-widest cursor-pointer underline">Global Visibility Node: {isPublic ? 'Active' : 'Secret'}</label>
+                <label htmlFor="pvis" className="text-[10px] font-bold text-[#888] uppercase tracking-widest cursor-pointer underline">Public Visibility Node: {isPublic ? 'Active' : 'Secret'}</label>
               </div>
             </section>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {filesList.map(f => (
                 <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all duration-500 relative hover:shadow-2xl hover:shadow-white/5">
                   <div className="absolute top-4 right-4">
-                    <span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>{f.is_public ? 'Public' : 'Private'}</span>
+                    <span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-600/20' : 'bg-amber-500/10 text-amber-500 border-amber-600/20'}`}>{f.is_public ? 'Public' : 'Private'}</span>
                   </div>
                   <div className="flex justify-between items-start mb-6 pt-2">
                     <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black">{f.file_name.split('.').pop()}</div>
