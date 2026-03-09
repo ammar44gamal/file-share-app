@@ -67,26 +67,6 @@ export default function DistributedFileHub() {
     setAdminUserList(data || []);
   };
 
-  const promoteUser = async (targetId: string) => {
-    const { error } = await supabase.from('profiles').update({ is_admin: true }).eq('id', targetId);
-    if (!error) {
-      await fetchAdminStats(); // THIS FORCES THE UI UPDATE
-    } else {
-      alert("Permission Error: Check SQL RLS Policies.");
-    }
-  };
-
-  const demoteUser = async (targetId: string) => {
-    if (targetId === user.id) {
-      alert("Master Node Protection: You cannot demote yourself.");
-      return;
-    }
-    const { error } = await supabase.from('profiles').update({ is_admin: false }).eq('id', targetId);
-    if (!error) {
-      await fetchAdminStats(); 
-    }
-  };
-
   const fetchFolders = async () => {
     const { data } = await supabase.from('folders').select('*').order('name');
     setFolders(data || []);
@@ -114,7 +94,7 @@ export default function DistributedFileHub() {
 
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
-    if (!confirm("Delete collection and its metadata?")) return;
+    if (!confirm("Delete folder and all files?")) return;
     await supabase.from('folders').delete().eq('id', folderId);
     if (selectedFolder === folderId) setSelectedFolder(null);
     fetchFolders();
@@ -172,7 +152,7 @@ export default function DistributedFileHub() {
   };
 
   const handleChangePassword = async () => {
-    const newPassword = prompt("New secure credential:");
+    const newPassword = prompt("Enter your new secure password:");
     if (!newPassword) return;
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) alert(error.message);
@@ -201,18 +181,19 @@ export default function DistributedFileHub() {
   }
 
   return (
-    <div className="flex h-screen bg-black text-white font-sans">
+    <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
       <aside className="w-64 bg-black border-r border-[#222] p-6 flex flex-col">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
           <h1 className="font-bold text-lg tracking-tight">FileHub</h1>
         </div>
+
         <nav className="flex-1 space-y-1 overflow-y-auto">
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
             Dashboard
           </button>
           {isAdmin && (
-            <button onClick={() => setViewingAdminPanel(true)} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>
+            <button onClick={() => setViewingAdminPanel(true)} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>
               🛠️ Admin
             </button>
           )}
@@ -256,27 +237,20 @@ export default function DistributedFileHub() {
         {viewingAdminPanel ? (
           <div className="animate-in slide-in-from-bottom-4 duration-500">
             <header className="mb-12">
-              <h2 className="text-3xl font-bold tracking-tight text-white">Admin Control</h2>
-              <p className="text-[#888] text-sm mt-1">Global node management</p>
+              <h2 className="text-3xl font-bold tracking-tight">Network Registry</h2>
+              <p className="text-[#888] text-sm mt-1 italic">Master list of active nodes</p>
             </header>
             <div className="bg-[#080808] border border-[#222] rounded-xl overflow-hidden shadow-2xl">
-              <table className="w-full text-left text-xs text-white">
+              <table className="w-full text-left text-xs">
                 <thead className="bg-[#111] text-[#444] uppercase tracking-widest font-bold border-b border-[#222]">
-                  <tr><th className="p-4">Identity</th><th className="p-4">Email</th><th className="p-4">Role</th><th className="p-4">Action</th></tr>
+                  <tr><th className="p-4">Identity</th><th className="p-4">Email Channel</th><th className="p-4">Joined</th></tr>
                 </thead>
                 <tbody className="divide-y divide-[#222]">
                   {adminUserList.map(u => (
                     <tr key={u.id} className="hover:bg-[#111] transition duration-300">
                       <td className="p-4 font-bold">{u.username}</td>
                       <td className="p-4 text-[#888]">{u.email}</td>
-                      <td className="p-4 uppercase text-[9px] font-bold tracking-widest">{u.is_admin ? <span className="text-blue-500">Admin</span> : 'User'}</td>
-                      <td className="p-4">
-                        {u.is_admin ? (
-                           u.id !== user.id && <button onClick={() => demoteUser(u.id)} className="px-3 py-1 bg-red-500/10 text-red-500 text-[9px] font-bold rounded hover:bg-red-500/20 transition">Demote</button>
-                        ) : (
-                          <button onClick={() => promoteUser(u.id)} className="px-3 py-1 bg-white text-black text-[9px] font-bold rounded hover:bg-[#ccc] transition">Promote</button>
-                        )}
-                      </td>
+                      <td className="p-4 text-[#444] italic">{new Date(u.created_at).toLocaleDateString()}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -284,13 +258,44 @@ export default function DistributedFileHub() {
             </div>
           </div>
         ) : (
-          /* STANDARD DASHBOARD... (keep existing) */
           <>
             <header className="mb-16">
-              <h2 className="text-3xl font-bold tracking-tight text-white">{selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Explorer'}</h2>
+              <h2 className="text-3xl font-bold tracking-tight">{selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Explorer'}</h2>
               <p className="text-[#888] text-sm mt-1 italic">Node v4.5 Active</p>
             </header>
-            {/* Grid & Section logic from image_640083.png builds... */}
+            <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative overflow-hidden shadow-2xl">
+              <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
+              <p className="text-[#888] text-sm mb-8 leading-relaxed font-medium">Broadcast metadata across the cluster node.</p>
+              <div className="flex flex-col md:flex-row items-center gap-6">
+                <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:text-[10px] file:font-bold file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
+                <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
+              </div>
+              <div className="mt-8 flex items-center gap-3">
+                <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
+                <label htmlFor="pvis" className="text-[10px] font-bold text-[#888] uppercase tracking-widest cursor-pointer">Public: {isPublic ? 'Yes' : 'No'}</label>
+              </div>
+            </section>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+              {filesList.map(f => (
+                <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all duration-500 relative">
+                  <div className="absolute top-4 right-4">
+                    <span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-600/20' : 'bg-amber-500/10 text-amber-500 border-amber-600/20'}`}>{f.is_public ? 'Public' : 'Private'}</span>
+                  </div>
+                  <div className="flex justify-between items-start mb-6 pt-2">
+                    <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black">{f.file_name.split('.').pop()}</div>
+                    <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                       <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="text-[#444] hover:text-white transition">💾</button>
+                       {user.id === f.user_id && <><button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`${f.is_public ? 'text-blue-900' : 'text-amber-900'} hover:text-white transition`}>{f.is_public ? '🌐' : '🔒'}</button><button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="text-[#222] hover:text-red-500 transition">🗑️</button></>}
+                    </div>
+                  </div>
+                  <h4 className="font-bold text-sm truncate mb-1 text-slate-200">{f.file_name}</h4>
+                  <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase">
+                    <span className="text-[#555]">{f.owner_username}</span>
+                    <span>{(f.file_size/1024).toFixed(1)} KB</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </>
         )}
       </main>
