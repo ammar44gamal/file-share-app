@@ -26,8 +26,14 @@ export default function DistributedFileHub() {
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
 
-  // Custom Modal State
-  const [modal, setModal] = useState<{show: boolean, title: string, message: string, onConfirm?: (val?: string) => void, isPrompt?: boolean}>({
+  // FIXED MODAL STATE FOR TYPESCRIPT
+  const [modal, setModal] = useState<{
+    show: boolean, 
+    title: string, 
+    message: string, 
+    onConfirm?: (val: string) => void, 
+    isPrompt?: boolean
+  }>({
     show: false, title: '', message: '', isPrompt: false
   });
   const [modalInput, setModalInput] = useState('');
@@ -63,7 +69,13 @@ export default function DistributedFileHub() {
 
   const showPrompt = (title: string, message: string, onConfirm: (val: string) => void) => {
     setModalInput('');
-    setModal({ show: true, title, message, isPrompt: true, onConfirm });
+    setModal({ 
+        show: true, 
+        title, 
+        message, 
+        isPrompt: true, 
+        onConfirm: (val: string) => onConfirm(val) 
+    });
   };
 
   const fetchProfile = async (currentUser: any) => {
@@ -111,7 +123,7 @@ export default function DistributedFileHub() {
 
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
-    showPrompt("Delete Folder", "Are you sure? Type 'DELETE' to confirm.", (val) => {
+    showPrompt("Delete Folder", "Type 'DELETE' to confirm folder removal.", (val) => {
         if(val === 'DELETE') {
             supabase.from('folders').delete().eq('id', folderId).then(() => {
                 if (selectedFolder === folderId) setSelectedFolder(null);
@@ -162,7 +174,7 @@ export default function DistributedFileHub() {
   };
 
   const handleDeleteFile = async (id: string, path: string) => {
-    showPrompt("Delete File", "Type 'CONFIRM' to delete this asset.", (val) => {
+    showPrompt("Delete File", "Type 'CONFIRM' to wipe this file node.", (val) => {
         if(val === 'CONFIRM') {
             supabase.storage.from('user-files').remove([path]).then(() => {
                 supabase.from('files').delete().eq('id', id).then(() => fetchFiles());
@@ -209,7 +221,7 @@ export default function DistributedFileHub() {
 
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
-      {/* CUSTOM THEMED MODAL */}
+      {/* THEMED CUSTOM MODAL */}
       {modal.show && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-[#111] border border-[#333] p-8 rounded-2xl max-w-sm w-full shadow-2xl">
@@ -220,7 +232,7 @@ export default function DistributedFileHub() {
                 )}
                 <div className="flex gap-4">
                     <button onClick={() => {
-                        if(modal.isPrompt && modal.onConfirm) modal.onConfirm(modalInput);
+                        if(modal.onConfirm) modal.onConfirm(modalInput);
                         setModal({ ...modal, show: false });
                     }} className="flex-1 bg-white text-black py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest">Confirm</button>
                     <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 border border-[#333] py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest text-[#444] hover:text-white">Cancel</button>
@@ -273,7 +285,6 @@ export default function DistributedFileHub() {
               <p className="text-[10px] text-[#444] mb-6 truncate px-2">{user.email}</p>
               
               <div className="space-y-2">
-                {/* 2. CHANGE PASSWORD BUTTON */}
                 <button onClick={handleChangePassword} className="w-full py-2.5 text-[10px] font-bold border border-[#222] rounded-lg hover:bg-[#1a1a1a] transition uppercase tracking-widest">CHANGE PASSWORD</button>
                 <div className="pt-2">
                   <button onClick={handleLogout} className="w-full py-2.5 text-[10px] font-bold bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition uppercase tracking-widest">LOGOUT</button>
@@ -321,7 +332,7 @@ export default function DistributedFileHub() {
                 <div className="flex-1 flex items-center gap-4 w-full">
                     <input type="file" key={file ? 'loaded' : 'empty'} onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:text-[10px] file:font-bold file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
                     
-                    {/* 3. CLEAR BUTTON */}
+                    {/* CLEAR BUTTON */}
                     {file && (
                         <button onClick={() => setFile(null)} className="px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10">Clear</button>
                     )}
@@ -329,9 +340,10 @@ export default function DistributedFileHub() {
                 <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
               </div>
 
-              <div className="mt-8 flex items-center gap-3">
+              {/* FIXED PUBLIC GROUP TOGGLE LOCATION */}
+              <div className="mt-4 flex items-center gap-2">
                 <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-                <label htmlFor="pvis" className="text-[10px] font-bold text-[#888] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
+                <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
               </div>
             </section>
 
