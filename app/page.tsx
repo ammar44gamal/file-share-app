@@ -26,7 +26,7 @@ export default function DistributedFileHub() {
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
 
-  // MODAL STATE WITH "TRY AGAIN" LOGIC
+  // THEMED MODAL STATE
   const [modal, setModal] = useState<{
     show: boolean, 
     title: string, 
@@ -64,6 +64,7 @@ export default function DistributedFileHub() {
     }
   }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
 
+  // Alert with specific Retry logic
   const showAlert = (title: string, message: string, retryAction?: () => void) => {
     setModal({ show: true, title, message, isPrompt: false, onRetry: retryAction });
   };
@@ -134,6 +135,7 @@ export default function DistributedFileHub() {
     });
   };
 
+  // Fixed Auth Handling to prevent modals appearing after login
   const handleAuth = async () => {
     if (isSignUp) {
       const { data, error } = await supabase.auth.signUp({ email, password });
@@ -144,6 +146,7 @@ export default function DistributedFileHub() {
       showAlert("Success", "Verification email sent!");
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
+      // If error happens here, the user state is still null, so the modal stays on login screen
       if (error) return showAlert("Error", error.message);
     }
   };
@@ -190,13 +193,13 @@ export default function DistributedFileHub() {
     window.location.reload(); 
   };
 
+  // Fixed Password Change Loop
   const handleChangePassword = () => {
     showPrompt("Security Update", "Enter your new secure password (min 6 chars):", async (val) => {
         if(!val) return;
         const { error } = await supabase.auth.updateUser({ password: val });
         if (error) {
-            // Updated to trigger the Retry loop
-            showAlert("Error", error.message, handleChangePassword);
+            showAlert("Error", error.message, () => handleChangePassword());
         } else {
             showAlert("Success", "Credentials updated.");
         }
@@ -206,18 +209,31 @@ export default function DistributedFileHub() {
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black p-6">
+        {/* LOGIN MODAL RENDERED HERE TO ENSURE SCOPE */}
+        {modal.show && (
+            <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                <div className="bg-[#111] border border-[#333] p-8 rounded-2xl max-w-sm w-full shadow-2xl">
+                    <h3 className="text-xl font-bold mb-4 italic text-white">{modal.title}</h3>
+                    <p className="text-sm text-[#888] mb-6">{modal.message}</p>
+                    <div className="flex gap-4">
+                        <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 bg-white text-black py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest">Try Again</button>
+                    </div>
+                </div>
+            </div>
+        )}
+
         <div className="bg-[#111] border border-[#333] p-10 rounded-2xl shadow-2xl w-full max-w-sm">
           <h2 className="text-2xl font-bold mb-8 text-center text-white tracking-tight italic">FileHub Access</h2>
           {isSignUp && (
             <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setUsername(e.target.value)} />
           )}
-          <input type="email" placeholder="Email" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setEmail(e.target.value)} />
-          <input type="password" placeholder="Password" className="w-full p-4 mb-8 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setPassword(e.target.value)} />
+          <input type="email" value={email} placeholder="Email" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setEmail(e.target.value)} />
+          <input type="password" value={password} placeholder="Password" className="w-full p-4 mb-8 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setPassword(e.target.value)} />
           <button onClick={handleAuth} className="w-full bg-white text-black py-4 rounded-lg font-bold hover:bg-[#ccc] transition uppercase tracking-widest text-xs">
             {isSignUp ? 'Sign Up' : 'Log In'}
           </button>
           <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white transition">
-            {isSignUp ? 'Already have an account? Login' : 'Create Account'}
+            {isSignUp ? 'Back to Login' : 'Create Account'}
           </p>
         </div>
       </div>
@@ -226,7 +242,7 @@ export default function DistributedFileHub() {
 
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
-      {/* IMPROVED DYNAMIC MODAL */}
+      {/* GLOBAL DASHBOARD MODAL */}
       {modal.show && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-[#111] border border-[#333] p-8 rounded-2xl max-w-sm w-full shadow-2xl">
@@ -237,12 +253,15 @@ export default function DistributedFileHub() {
                 )}
                 <div className="flex gap-4">
                     <button onClick={() => {
-                        if(modal.isPrompt && modal.onConfirm) {
-                            modal.onConfirm(modalInput);
-                        } else if (modal.onRetry) {
-                            modal.onRetry(); // Triggers "Try Again" loop
-                        }
+                        const retryAction = modal.onRetry;
+                        const confirmAction = modal.onConfirm;
+                        const currentInput = modalInput;
                         setModal({ ...modal, show: false });
+                        if (modal.title === "Error" && retryAction) {
+                            setTimeout(() => retryAction(), 100);
+                        } else if (modal.isPrompt && confirmAction) {
+                            confirmAction(currentInput);
+                        }
                     }} className="flex-1 bg-white text-black py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest">
                         {modal.title === "Error" ? "Try Again" : "Confirm"}
                     </button>
