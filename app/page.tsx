@@ -26,12 +26,13 @@ export default function DistributedFileHub() {
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
 
-  // FIXED MODAL STATE FOR TYPESCRIPT
+  // MODAL STATE WITH "TRY AGAIN" LOGIC
   const [modal, setModal] = useState<{
     show: boolean, 
     title: string, 
     message: string, 
     onConfirm?: (val: string) => void, 
+    onRetry?: () => void,
     isPrompt?: boolean
   }>({
     show: false, title: '', message: '', isPrompt: false
@@ -63,8 +64,8 @@ export default function DistributedFileHub() {
     }
   }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
 
-  const showAlert = (title: string, message: string) => {
-    setModal({ show: true, title, message, isPrompt: false });
+  const showAlert = (title: string, message: string, retryAction?: () => void) => {
+    setModal({ show: true, title, message, isPrompt: false, onRetry: retryAction });
   };
 
   const showPrompt = (title: string, message: string, onConfirm: (val: string) => void) => {
@@ -136,14 +137,14 @@ export default function DistributedFileHub() {
   const handleAuth = async () => {
     if (isSignUp) {
       const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return showAlert("Auth Error", error.message);
+      if (error) return showAlert("Error", error.message);
       if (data.user) {
         await supabase.from('profiles').insert([{ id: data.user.id, username, is_admin: false }]);
       }
       showAlert("Success", "Verification email sent!");
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return showAlert("Auth Error", error.message);
+      if (error) return showAlert("Error", error.message);
     }
   };
 
@@ -190,11 +191,15 @@ export default function DistributedFileHub() {
   };
 
   const handleChangePassword = () => {
-    showPrompt("Security Update", "Enter your new secure password:", async (val) => {
+    showPrompt("Security Update", "Enter your new secure password (min 6 chars):", async (val) => {
         if(!val) return;
         const { error } = await supabase.auth.updateUser({ password: val });
-        if (error) showAlert("Error", error.message);
-        else showAlert("Success", "Credentials updated.");
+        if (error) {
+            // Updated to trigger the Retry loop
+            showAlert("Error", error.message, handleChangePassword);
+        } else {
+            showAlert("Success", "Credentials updated.");
+        }
     });
   };
 
@@ -221,7 +226,7 @@ export default function DistributedFileHub() {
 
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
-      {/* THEMED CUSTOM MODAL */}
+      {/* IMPROVED DYNAMIC MODAL */}
       {modal.show && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-[#111] border border-[#333] p-8 rounded-2xl max-w-sm w-full shadow-2xl">
@@ -232,9 +237,15 @@ export default function DistributedFileHub() {
                 )}
                 <div className="flex gap-4">
                     <button onClick={() => {
-                        if(modal.onConfirm) modal.onConfirm(modalInput);
+                        if(modal.isPrompt && modal.onConfirm) {
+                            modal.onConfirm(modalInput);
+                        } else if (modal.onRetry) {
+                            modal.onRetry(); // Triggers "Try Again" loop
+                        }
                         setModal({ ...modal, show: false });
-                    }} className="flex-1 bg-white text-black py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest">Confirm</button>
+                    }} className="flex-1 bg-white text-black py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest">
+                        {modal.title === "Error" ? "Try Again" : "Confirm"}
+                    </button>
                     <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 border border-[#333] py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest text-[#444] hover:text-white">Cancel</button>
                 </div>
             </div>
@@ -332,7 +343,6 @@ export default function DistributedFileHub() {
                 <div className="flex-1 flex items-center gap-4 w-full">
                     <input type="file" key={file ? 'loaded' : 'empty'} onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:text-[10px] file:font-bold file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
                     
-                    {/* CLEAR BUTTON */}
                     {file && (
                         <button onClick={() => setFile(null)} className="px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10">Clear</button>
                     )}
@@ -340,7 +350,6 @@ export default function DistributedFileHub() {
                 <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
               </div>
 
-              {/* FIXED PUBLIC GROUP TOGGLE LOCATION */}
               <div className="mt-4 flex items-center gap-2">
                 <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
                 <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
