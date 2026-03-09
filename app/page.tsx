@@ -20,7 +20,7 @@ export default function DistributedFileHub() {
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
 
-  // Identity & Admin States
+  // Identity & Admin Management
   const [profileName, setProfileName] = useState('User');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
@@ -56,7 +56,7 @@ export default function DistributedFileHub() {
     const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
     if (data) {
-      setProfileName(data.username); // Displays Hi, {username}
+      setProfileName(data.username);
       setIsAdmin(data.is_admin || isMasterEmail); 
     } else if (isMasterEmail) {
       setIsAdmin(true);
@@ -64,24 +64,30 @@ export default function DistributedFileHub() {
   };
 
   const fetchAdminStats = async () => {
-    // Pulls from the bridged view of profiles + auth emails
     const { data } = await supabase.from('admin_user_stats').select('*');
     setAdminUserList(data || []);
   };
 
+  // Improved Promotion Logic
   const promoteUser = async (targetId: string) => {
     const { error } = await supabase.from('profiles').update({ is_admin: true }).eq('id', targetId);
-    if (!error) fetchAdminStats();
+    if (!error) {
+      await fetchAdminStats(); // Force UI update
+    } else {
+      alert("Promotion failed: Check database connection.");
+    }
   };
 
+  // Improved Demotion Logic with Red styling
   const demoteUser = async (targetId: string) => {
-    // Master Protection for ammargamal44s@gmail.com
     if (targetId === user.id) {
-      alert("System integrity error: You cannot demote the root master node.");
+      alert("System integrity: You cannot demote the master administrator.");
       return;
     }
     const { error } = await supabase.from('profiles').update({ is_admin: false }).eq('id', targetId);
-    if (!error) fetchAdminStats();
+    if (!error) {
+      await fetchAdminStats(); // Force UI update
+    }
   };
 
   const fetchFolders = async () => {
@@ -111,7 +117,7 @@ export default function DistributedFileHub() {
 
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
-    if (!confirm("Delete folder and all distributed data blocks?")) return;
+    if (!confirm("Delete folder and all files?")) return;
     await supabase.from('folders').delete().eq('id', folderId);
     if (selectedFolder === folderId) setSelectedFolder(null);
     fetchFolders();
@@ -234,7 +240,7 @@ export default function DistributedFileHub() {
           <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-2 focus:border-[#888] outline-none text-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
           <div className="flex items-center gap-2 mb-4">
             <input type="checkbox" checked={folderIsPublic} onChange={e => setFolderIsPublic(e.target.checked)} id="fvis" className="rounded bg-black border-[#333]" />
-            <label htmlFor="fvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">Public Group</label>
+            <label htmlFor="fvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer underline">Public Group</label>
           </div>
           <button onClick={createFolder} className="w-full py-2.5 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc]">New Folder</button>
         </div>
@@ -276,7 +282,9 @@ export default function DistributedFileHub() {
                     <tr key={u.id} className="hover:bg-[#111] transition duration-300">
                       <td className="p-4 font-bold">{u.username}</td>
                       <td className="p-4 text-[#888]">{u.email}</td>
-                      <td className="p-4 uppercase text-[9px] font-bold tracking-widest">{u.is_admin ? <span className="text-blue-500">Admin</span> : 'User'}</td>
+                      <td className="p-4 uppercase text-[9px] font-bold tracking-widest">
+                        {u.is_admin ? <span className="text-blue-500">Admin</span> : 'User'}
+                      </td>
                       <td className="p-4">
                         {u.is_admin ? (
                            u.id !== user.id && (
@@ -293,6 +301,7 @@ export default function DistributedFileHub() {
             </div>
           </div>
         ) : (
+          /* Standard UI continues as before */
           <>
             <header className="mb-16">
               <h2 className="text-3xl font-bold tracking-tight">{selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Explorer'}</h2>
@@ -300,7 +309,7 @@ export default function DistributedFileHub() {
             </header>
             <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative overflow-hidden shadow-2xl">
               <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
-              <p className="text-[#888] text-sm mb-8 leading-relaxed font-medium italic opacity-70">Broadcast metadata across the cluster node.</p>
+              <p className="text-[#888] text-sm mb-8 leading-relaxed font-medium">Broadcast metadata across the cluster node.</p>
               <div className="flex flex-col md:flex-row items-center gap-6">
                 <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:text-[10px] file:font-bold file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
                 <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
@@ -312,9 +321,9 @@ export default function DistributedFileHub() {
             </section>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {filesList.map(f => (
-                <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all duration-500 relative hover:shadow-2xl hover:shadow-white/5">
+                <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all duration-500 relative">
                   <div className="absolute top-4 right-4">
-                    <span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-600/20' : 'bg-amber-500/10 text-amber-500 border-amber-600/20'}`}>{f.is_public ? 'Public' : 'Private'}</span>
+                    <span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>{f.is_public ? 'Public' : 'Private'}</span>
                   </div>
                   <div className="flex justify-between items-start mb-6 pt-2">
                     <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black">{f.file_name.split('.').pop()}</div>
