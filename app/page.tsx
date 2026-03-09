@@ -20,12 +20,17 @@ export default function DistributedFileHub() {
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
 
-  // Identity States
   const [profileName, setProfileName] = useState('User');
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
+
+  // Custom Modal State
+  const [modal, setModal] = useState<{show: boolean, title: string, message: string, onConfirm?: (val?: string) => void, isPrompt?: boolean}>({
+    show: false, title: '', message: '', isPrompt: false
+  });
+  const [modalInput, setModalInput] = useState('');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -52,22 +57,23 @@ export default function DistributedFileHub() {
     }
   }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
 
-  const fetchProfile = async (currentUser: any) => {
-    // 1. Fetching from the profiles table shown in your screenshot
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('username, is_admin')
-      .eq('id', currentUser.id)
-      .single();
-    
-    const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
+  const showAlert = (title: string, message: string) => {
+    setModal({ show: true, title, message, isPrompt: false });
+  };
 
+  const showPrompt = (title: string, message: string, onConfirm: (val: string) => void) => {
+    setModalInput('');
+    setModal({ show: true, title, message, isPrompt: true, onConfirm });
+  };
+
+  const fetchProfile = async (currentUser: any) => {
+    const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
+    const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
+    
     if (data && data.username) {
-      console.log("Profile Data Found:", data.username); // Check your F12 console
       setProfileName(data.username); 
       setIsAdmin(data.is_admin || isMasterEmail); 
     } else {
-      // Fallback only if the table row is missing
       setProfileName(currentUser.email.split('@')[0]);
       setIsAdmin(isMasterEmail);
     }
@@ -105,23 +111,27 @@ export default function DistributedFileHub() {
 
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
-    if (!confirm("Delete folder?")) return;
-    await supabase.from('folders').delete().eq('id', folderId);
-    if (selectedFolder === folderId) setSelectedFolder(null);
-    fetchFolders();
+    showPrompt("Delete Folder", "Are you sure? Type 'DELETE' to confirm.", (val) => {
+        if(val === 'DELETE') {
+            supabase.from('folders').delete().eq('id', folderId).then(() => {
+                if (selectedFolder === folderId) setSelectedFolder(null);
+                fetchFolders();
+            });
+        }
+    });
   };
 
   const handleAuth = async () => {
     if (isSignUp) {
       const { data, error } = await supabase.auth.signUp({ email, password });
-      if (error) return alert(error.message);
+      if (error) return showAlert("Auth Error", error.message);
       if (data.user) {
         await supabase.from('profiles').insert([{ id: data.user.id, username, is_admin: false }]);
       }
-      alert("Verification sent!");
+      showAlert("Success", "Verification email sent!");
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) return alert(error.message);
+      if (error) return showAlert("Auth Error", error.message);
     }
   };
 
@@ -152,10 +162,13 @@ export default function DistributedFileHub() {
   };
 
   const handleDeleteFile = async (id: string, path: string) => {
-    if (!confirm("Delete file?")) return;
-    await supabase.storage.from('user-files').remove([path]);
-    await supabase.from('files').delete().eq('id', id);
-    fetchFiles();
+    showPrompt("Delete File", "Type 'CONFIRM' to delete this asset.", (val) => {
+        if(val === 'CONFIRM') {
+            supabase.storage.from('user-files').remove([path]).then(() => {
+                supabase.from('files').delete().eq('id', id).then(() => fetchFiles());
+            });
+        }
+    });
   };
 
   const handleLogout = async () => {
@@ -164,12 +177,13 @@ export default function DistributedFileHub() {
     window.location.reload(); 
   };
 
-  const handleChangePassword = async () => {
-    const newPassword = prompt("New secure password:");
-    if (!newPassword) return;
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (error) alert(error.message);
-    else alert("Success.");
+  const handleChangePassword = () => {
+    showPrompt("Security Update", "Enter your new secure password:", async (val) => {
+        if(!val) return;
+        const { error } = await supabase.auth.updateUser({ password: val });
+        if (error) showAlert("Error", error.message);
+        else showAlert("Success", "Credentials updated.");
+    });
   };
 
   if (!user) {
@@ -195,6 +209,26 @@ export default function DistributedFileHub() {
 
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
+      {/* CUSTOM THEMED MODAL */}
+      {modal.show && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-[#111] border border-[#333] p-8 rounded-2xl max-w-sm w-full shadow-2xl">
+                <h3 className="text-xl font-bold mb-4 tracking-tight italic">{modal.title}</h3>
+                <p className="text-sm text-[#888] mb-6 leading-relaxed">{modal.message}</p>
+                {modal.isPrompt && (
+                    <input autoFocus type="password" value={modalInput} onChange={(e) => setModalInput(e.target.value)} className="w-full p-3 bg-black border border-[#333] rounded-lg mb-6 text-white outline-none focus:border-white" />
+                )}
+                <div className="flex gap-4">
+                    <button onClick={() => {
+                        if(modal.isPrompt && modal.onConfirm) modal.onConfirm(modalInput);
+                        setModal({ ...modal, show: false });
+                    }} className="flex-1 bg-white text-black py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest">Confirm</button>
+                    <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 border border-[#333] py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest text-[#444] hover:text-white">Cancel</button>
+                </div>
+            </div>
+        </div>
+      )}
+
       <aside className="w-64 bg-black border-r border-[#222] p-6 flex flex-col">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
@@ -217,7 +251,6 @@ export default function DistributedFileHub() {
           ))}
         </nav>
 
-        {/* RESTORED SIDEBAR LAYOUT */}
         <div className="mt-auto pt-6 border-t border-[#222]">
           <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-2 focus:border-[#888] outline-none text-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
           <div className="flex items-center gap-2 mb-4">
@@ -236,15 +269,14 @@ export default function DistributedFileHub() {
           {showAccountMenu && (
             <div className="absolute right-0 mt-4 w-64 bg-[#111] border border-[#333] rounded-xl shadow-2xl p-6 text-center animate-in fade-in zoom-in duration-200">
               <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center text-black text-2xl font-bold mb-4">{profileName[0]?.toUpperCase()}</div>
-              
-              {/* FIXED GREETING */}
               <h3 className="text-lg font-bold text-white mb-1">Hi, {profileName}!</h3>
               <p className="text-[10px] text-[#444] mb-6 truncate px-2">{user.email}</p>
               
               <div className="space-y-2">
-                <button onClick={handleChangePassword} className="w-full py-2.5 text-xs font-bold border border-[#222] rounded-lg hover:bg-[#1a1a1a] transition uppercase tracking-widest">PASSWORD</button>
+                {/* 2. CHANGE PASSWORD BUTTON */}
+                <button onClick={handleChangePassword} className="w-full py-2.5 text-[10px] font-bold border border-[#222] rounded-lg hover:bg-[#1a1a1a] transition uppercase tracking-widest">CHANGE PASSWORD</button>
                 <div className="pt-2">
-                  <button onClick={handleLogout} className="w-full py-2.5 text-xs font-bold bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition uppercase tracking-widest">LOGOUT</button>
+                  <button onClick={handleLogout} className="w-full py-2.5 text-[10px] font-bold bg-red-500/10 text-red-500 rounded-lg hover:bg-red-500/20 transition uppercase tracking-widest">LOGOUT</button>
                 </div>
               </div>
             </div>
@@ -280,18 +312,26 @@ export default function DistributedFileHub() {
               <h2 className="text-3xl font-bold tracking-tight text-white">{selectedFolder ? folders.find(f => f.id === selectedFolder)?.name : 'Root Explorer'}</h2>
               <p className="text-[#888] text-sm mt-1 italic">Node v4.5 Active</p>
             </header>
+            
             <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative overflow-hidden shadow-2xl">
               <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
               <p className="text-[#888] text-sm mb-8 leading-relaxed font-medium">Broadcast metadata across the cluster node.</p>
+              
               <div className="flex flex-col md:flex-row items-center gap-6">
-                <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:text-[10px] file:font-bold file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
+                <div className="flex-1 flex items-center gap-4 w-full">
+                    <input type="file" key={file ? 'loaded' : 'empty'} onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:text-[10px] file:font-bold file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
+                    
+                    {/* 3. CLEAR BUTTON */}
+                    {file && (
+                        <button onClick={() => setFile(null)} className="px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10">Clear</button>
+                    )}
+                </div>
                 <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
               </div>
 
-              {/* RESTORED PUBLIC/PRIVATE CHECKBOX */}
               <div className="mt-8 flex items-center gap-3">
                 <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-                <label htmlFor="pvis" className="text-[10px] font-bold text-[#888] uppercase tracking-widest cursor-pointer underline">PUBLIC GROUP</label>
+                <label htmlFor="pvis" className="text-[10px] font-bold text-[#888] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
               </div>
             </section>
 
