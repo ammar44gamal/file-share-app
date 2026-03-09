@@ -133,7 +133,7 @@ export default function DistributedFileHub() {
     fetchFiles();
   };
 
-  // --- IDENTITY & ACCOUNT PURGE ACTIONS ---
+  // --- REFINED ACCOUNT ACTIONS ---
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -148,21 +148,6 @@ export default function DistributedFileHub() {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) alert(error.message);
     else alert("Password updated successfully!");
-  };
-
-  const handlePermanentSignOut = async () => {
-    const confirmDelete = confirm("CRITICAL: This will permanently delete your account and all data. You will need to re-register and verify your email to return. Proceed?");
-    if (!confirmDelete) return;
-
-    // Triggering the delete on 'profiles' cascades to files and fires the SQL trigger for Auth
-    const { error } = await supabase.from('profiles').delete().eq('id', user.id);
-    
-    if (!error) {
-      alert("Identity purged. To return, you must Sign Up as a new user.");
-      handleLogout();
-    } else {
-      alert("Purge failed: " + error.message);
-    }
   };
 
   if (!user) {
@@ -188,7 +173,6 @@ export default function DistributedFileHub() {
 
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
-      {/* SIDEBAR */}
       <aside className="w-72 bg-black border-r border-[#222] p-8 flex flex-col">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
@@ -228,7 +212,6 @@ export default function DistributedFileHub() {
         </div>
       </aside>
 
-      {/* MAIN VIEW */}
       <main className="flex-1 overflow-y-auto p-16 relative">
         {/* IDENTITY MENU */}
         <div className="absolute top-10 right-10 z-50">
@@ -251,12 +234,9 @@ export default function DistributedFileHub() {
                 <button onClick={handleChangePassword} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest border border-[#222] rounded-xl hover:bg-[#1a1a1a] transition">
                   Change Password
                 </button>
-                <button onClick={handleLogout} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest border border-[#222] rounded-xl hover:bg-[#1a1a1a] transition">
-                  Log Out
-                </button>
-                <div className="pt-4 mt-2 border-t border-[#222]">
-                  <button onClick={handlePermanentSignOut} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition">
-                    Sign Out (Delete)
+                <div className="pt-2">
+                  <button onClick={handleLogout} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl hover:bg-red-500/20 transition">
+                    Log Out
                   </button>
                 </div>
               </div>
@@ -271,7 +251,6 @@ export default function DistributedFileHub() {
           <p className="text-[#444] text-[10px] font-bold uppercase tracking-[0.3em] mt-2 italic">Node v4.5 Active</p>
         </header>
 
-        {/* UPLOAD HERO */}
         <section className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[2.5rem] p-12 mb-20 shadow-2xl">
           <h3 className="text-lg font-bold mb-2">Deploy Data</h3>
           <p className="text-[#444] text-xs mb-10 font-medium">Replicating metadata across distributed nodes.</p>
@@ -287,7 +266,6 @@ export default function DistributedFileHub() {
           </div>
         </section>
 
-        {/* EXPLORER GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
           {filesList.map(f => (
             <div key={f.id} className="group bg-[#080808] p-6 rounded-2xl border border-[#222] hover:border-white transition-all duration-500 relative">
@@ -313,7 +291,7 @@ export default function DistributedFileHub() {
                 </div>
               </div>
               <h4 className="font-bold text-sm truncate mb-1">{f.file_name}</h4>
-              <div className="flex items-center justify-between text-[9px] font-bold text-[#333] uppercase tracking-tighter">
+              <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase tracking-tighter">
                 <span className="text-[#555]">{f.owner_username}</span>
                 <span>{(f.file_size/1024).toFixed(1)} KB</span>
               </div>
