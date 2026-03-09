@@ -53,7 +53,6 @@ export default function DistributedFileHub() {
   }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
 
   const fetchProfile = async (currentUser: any) => {
-    // Bridges Auth ID to the Profiles Identity Node
     const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
     
@@ -61,14 +60,12 @@ export default function DistributedFileHub() {
       setProfileName(data.username); 
       setIsAdmin(data.is_admin || isMasterEmail); 
     } else {
-      // Fallback: Using email prefix if profile is missing
       setProfileName(currentUser.email.split('@')[0]);
       setIsAdmin(isMasterEmail);
     }
   };
 
   const fetchAdminStats = async () => {
-    // Pulls the registry list with Identity vs Email
     const { data } = await supabase.from('admin_user_stats').select('*');
     setAdminUserList(data || []);
   };
@@ -111,7 +108,6 @@ export default function DistributedFileHub() {
       const { data, error } = await supabase.auth.signUp({ email, password });
       if (error) return alert(error.message);
       if (data.user) {
-        // Syncs the new username to the profiles table immediately
         await supabase.from('profiles').insert([{ id: data.user.id, username, is_admin: false }]);
       }
       alert("Verification sent!");
@@ -161,7 +157,7 @@ export default function DistributedFileHub() {
   };
 
   const handleChangePassword = async () => {
-    const newPassword = prompt("New secure credential:");
+    const newPassword = prompt("New secure password:");
     if (!newPassword) return;
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) alert(error.message);
@@ -212,6 +208,16 @@ export default function DistributedFileHub() {
             </button>
           ))}
         </nav>
+
+        {/* RESTORED FOLDER OPTIONS */}
+        <div className="mt-auto pt-6 border-t border-[#222]">
+          <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-2 focus:border-[#888] outline-none text-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
+          <div className="flex items-center gap-2 mb-4">
+            <input type="checkbox" checked={folderIsPublic} onChange={e => setFolderIsPublic(e.target.checked)} id="fvis" className="rounded bg-black border-[#333]" />
+            <label htmlFor="fvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">Public Group</label>
+          </div>
+          <button onClick={createFolder} className="w-full py-2.5 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc]">New Folder</button>
+        </div>
       </aside>
 
       <main className="flex-1 overflow-y-auto p-12 relative">
@@ -221,13 +227,9 @@ export default function DistributedFileHub() {
           </button>
           {showAccountMenu && (
             <div className="absolute right-0 mt-4 w-64 bg-[#111] border border-[#333] rounded-xl shadow-2xl p-6 text-center animate-in fade-in zoom-in duration-200">
+              <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center text-black text-2xl font-bold mb-4">{profileName[0]?.toUpperCase()}</div>
               
-              {/* Dynamic Avatar Node */}
-              <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center text-black text-2xl font-bold mb-4">
-                {profileName[0]?.toUpperCase()}
-              </div>
-              
-              {/* Personalized Identity Greeting */}
+              {/* FIXED GREETING: Shows Identity Name */}
               <h3 className="text-lg font-bold text-white mb-1">Hi, {profileName}!</h3>
               <p className="text-[10px] text-[#444] mb-6 truncate px-2">{user.email}</p>
               
@@ -272,7 +274,7 @@ export default function DistributedFileHub() {
             </header>
             <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative overflow-hidden shadow-2xl">
               <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
-              <p className="text-[#888] text-sm mb-8 leading-relaxed font-medium opacity-70 italic">Broadcast metadata across the cluster node.</p>
+              <p className="text-[#888] text-sm mb-8 leading-relaxed font-medium">Broadcast metadata across the cluster node.</p>
               <div className="flex flex-col md:flex-row items-center gap-6">
                 <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:text-[10px] file:font-bold file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
                 <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
@@ -280,9 +282,9 @@ export default function DistributedFileHub() {
             </section>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {filesList.map(f => (
-                <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all duration-300 relative hover:shadow-2xl hover:shadow-white/5">
+                <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all duration-300 relative">
                   <div className="absolute top-4 right-4">
-                    <span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-600/20' : 'bg-amber-500/10 text-amber-500 border-amber-600/20'}`}>{f.is_public ? 'Public' : 'Private'}</span>
+                    <span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-500'}`}>{f.is_public ? 'Public' : 'Private'}</span>
                   </div>
                   <div className="flex justify-between items-start mb-6 pt-2">
                     <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black">{f.file_name.split('.').pop()}</div>
