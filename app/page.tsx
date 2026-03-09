@@ -133,8 +133,12 @@ export default function DistributedFileHub() {
     fetchFiles();
   };
 
+  // --- IDENTITY & ACCOUNT PURGE ACTIONS ---
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    localStorage.clear();
+    sessionStorage.clear();
     window.location.reload(); 
   };
 
@@ -147,12 +151,17 @@ export default function DistributedFileHub() {
   };
 
   const handlePermanentSignOut = async () => {
-    const confirmDelete = confirm("CRITICAL: This will permanently delete your account and all data. Proceed?");
+    const confirmDelete = confirm("CRITICAL: This will permanently delete your account and all data. You will need to re-register and verify your email to return. Proceed?");
     if (!confirmDelete) return;
+
+    // Triggering the delete on 'profiles' cascades to files and fires the SQL trigger for Auth
     const { error } = await supabase.from('profiles').delete().eq('id', user.id);
+    
     if (!error) {
-      alert("Identity purged.");
+      alert("Identity purged. To return, you must Sign Up as a new user.");
       handleLogout();
+    } else {
+      alert("Purge failed: " + error.message);
     }
   };
 
@@ -179,9 +188,10 @@ export default function DistributedFileHub() {
 
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
+      {/* SIDEBAR */}
       <aside className="w-72 bg-black border-r border-[#222] p-8 flex flex-col">
         <div className="flex items-center gap-3 mb-12">
-          <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black font-sans">F</div>
+          <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
           <h1 className="font-bold text-xl tracking-tight">FileHub</h1>
         </div>
 
@@ -212,27 +222,42 @@ export default function DistributedFileHub() {
           <input type="text" placeholder="New folder..." className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-3 outline-none focus:border-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
           <div className="flex items-center gap-2 mb-4">
             <input type="checkbox" checked={folderIsPublic} onChange={e => setFolderIsPublic(e.target.checked)} id="fvis" className="rounded bg-black border-[#333]" />
-            <label htmlFor="fvis" className="text-[9px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">Public Group</label>
+            <label htmlFor="fvis" className="text-[9px] font-bold text-[#444] uppercase tracking-widest cursor-pointer underline">Public Group</label>
           </div>
           <button onClick={createFolder} className="w-full py-3 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc]">Create</button>
         </div>
       </aside>
 
+      {/* MAIN VIEW */}
       <main className="flex-1 overflow-y-auto p-16 relative">
+        {/* IDENTITY MENU */}
         <div className="absolute top-10 right-10 z-50">
-          <button onClick={() => setShowAccountMenu(!showAccountMenu)} className="w-10 h-10 rounded-full border border-[#333] bg-[#111] flex items-center justify-center hover:border-white transition-all overflow-hidden shadow-lg shadow-white/5">
+          <button 
+            onClick={() => setShowAccountMenu(!showAccountMenu)}
+            className="w-10 h-10 rounded-full border border-[#333] bg-[#111] flex items-center justify-center hover:border-white transition-all overflow-hidden shadow-lg shadow-white/5"
+          >
             <span className="text-xs font-black">{profileName[0]?.toUpperCase()}</span>
           </button>
+
           {showAccountMenu && (
-            <div className="absolute right-0 mt-4 w-64 bg-[#111] border border-[#333] rounded-2xl shadow-2xl p-6 text-center">
-              <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center text-black text-2xl font-black mb-4">{profileName[0]?.toUpperCase()}</div>
+            <div className="absolute right-0 mt-4 w-64 bg-[#111] border border-[#333] rounded-2xl shadow-2xl p-6 text-center animate-in fade-in zoom-in duration-200">
+              <div className="w-16 h-16 bg-white rounded-full mx-auto flex items-center justify-center text-black text-2xl font-black mb-4">
+                {profileName[0]?.toUpperCase()}
+              </div>
               <h3 className="text-lg font-bold text-white mb-1">Hi, {profileName}!</h3>
               <p className="text-[9px] text-[#444] font-black uppercase tracking-[0.2em] mb-6 truncate px-2">{user.email}</p>
+              
               <div className="space-y-2">
-                <button onClick={handleChangePassword} className="w-full py-2.5 text-[10px] font-black border border-[#222] rounded-xl hover:bg-[#1a1a1a] transition uppercase tracking-widest">Change Password</button>
-                <button onClick={handleLogout} className="w-full py-2.5 text-[10px] font-black border border-[#222] rounded-xl hover:bg-[#1a1a1a] transition uppercase tracking-widest">Log Out</button>
+                <button onClick={handleChangePassword} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest border border-[#222] rounded-xl hover:bg-[#1a1a1a] transition">
+                  Change Password
+                </button>
+                <button onClick={handleLogout} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest border border-[#222] rounded-xl hover:bg-[#1a1a1a] transition">
+                  Log Out
+                </button>
                 <div className="pt-4 mt-2 border-t border-[#222]">
-                  <button onClick={handlePermanentSignOut} className="w-full py-2.5 text-[10px] font-black bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition uppercase tracking-widest">Sign Out (Delete)</button>
+                  <button onClick={handlePermanentSignOut} className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition">
+                    Sign Out (Delete)
+                  </button>
                 </div>
               </div>
             </div>
@@ -246,24 +271,26 @@ export default function DistributedFileHub() {
           <p className="text-[#444] text-[10px] font-bold uppercase tracking-[0.3em] mt-2 italic">Node v4.5 Active</p>
         </header>
 
+        {/* UPLOAD HERO */}
         <section className="bg-[#0a0a0a] border border-[#1a1a1a] rounded-[2.5rem] p-12 mb-20 shadow-2xl">
           <h3 className="text-lg font-bold mb-2">Deploy Data</h3>
-          <p className="text-[#444] text-xs mb-10 font-medium font-sans">Replicating metadata across distributed nodes.</p>
-          <div className="flex flex-col md:flex-row items-center gap-6 font-sans">
+          <p className="text-[#444] text-xs mb-10 font-medium">Replicating metadata across distributed nodes.</p>
+          <div className="flex flex-col md:flex-row items-center gap-6">
             <input type="file" onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#444] file:mr-6 file:py-2.5 file:px-8 file:rounded-lg file:border file:border-[#222] file:bg-black file:text-white hover:file:bg-[#111] cursor-pointer" />
             <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-12 py-4 rounded-xl font-bold text-xs hover:bg-[#ccc] transition uppercase tracking-widest">
               {uploading ? 'Wait' : 'Distribute'}
             </button>
           </div>
-          <div className="mt-8 flex items-center gap-3 font-sans">
+          <div className="mt-8 flex items-center gap-3">
             <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
             <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">Initial Visibility: {isPublic ? 'Global' : 'Secret'}</label>
           </div>
         </section>
 
+        {/* EXPLORER GRID */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
           {filesList.map(f => (
-            <div key={f.id} className="group bg-[#080808] p-6 rounded-2xl border border-[#222] hover:border-white transition-all duration-500 relative font-sans">
+            <div key={f.id} className="group bg-[#080808] p-6 rounded-2xl border border-[#222] hover:border-white transition-all duration-500 relative">
               <div className="absolute top-4 right-4">
                 <span className={`text-[8px] font-black px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-amber-500/10 text-amber-500 border-amber-500/20'}`}>
                   {f.is_public ? 'Public' : 'Private'}
@@ -286,7 +313,7 @@ export default function DistributedFileHub() {
                 </div>
               </div>
               <h4 className="font-bold text-sm truncate mb-1">{f.file_name}</h4>
-              <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase tracking-tighter">
+              <div className="flex items-center justify-between text-[9px] font-bold text-[#333] uppercase tracking-tighter">
                 <span className="text-[#555]">{f.owner_username}</span>
                 <span>{(f.file_size/1024).toFixed(1)} KB</span>
               </div>
