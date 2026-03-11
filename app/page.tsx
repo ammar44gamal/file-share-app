@@ -9,6 +9,7 @@ export default function DistributedFileHub() {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // Eye Toggle State
   
   const [filesList, setFilesList] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
@@ -46,10 +47,15 @@ export default function DistributedFileHub() {
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) fetchProfile(currentUser);
+      
+      // Handle password recovery redirection
+      if (event === 'PASSWORD_RECOVERY') {
+        handleChangePassword();
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -126,7 +132,7 @@ export default function DistributedFileHub() {
 
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
-    showPrompt("Delete Folder", "Type 'DELETE' to confirm folder removal.", (val) => {
+    showPrompt("Delete Folder", "Type 'DELETE' to confirm.", (val) => {
         if(val !== 'DELETE') {
             showAlert("Error", "Validation failed. Type 'DELETE' in all caps.", () => handleFolderDelete(e, folderId));
             return;
@@ -150,6 +156,16 @@ export default function DistributedFileHub() {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return showAlert("Error", error.message);
     }
+  };
+
+  // FORGET PASSWORD FUNCTION
+  const handleForgotPassword = async () => {
+    if (!email) return showAlert("Notice", "Please enter your email address first.");
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin,
+    });
+    if (error) showAlert("Error", error.message);
+    else showAlert("Success", "Recovery link sent to your email!");
   };
 
   const handleUpload = async () => {
@@ -226,10 +242,33 @@ export default function DistributedFileHub() {
             <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setUsername(e.target.value)} />
           )}
           <input type="email" value={email} placeholder="Email" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setEmail(e.target.value)} />
-          <input type="password" value={password} placeholder="Password" className="w-full p-4 mb-8 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setPassword(e.target.value)} />
+          
+          <div className="relative mb-8">
+            <input 
+              type={showPassword ? "text" : "password"} 
+              value={password} 
+              placeholder="Password" 
+              className="w-full p-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none pr-12" 
+              onChange={e => setPassword(e.target.value)} 
+            />
+            <button 
+              onClick={() => setShowPassword(!showPassword)} 
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-[#444] hover:text-white transition"
+            >
+              {showPassword ? "👁️" : "👁️‍🗨️"}
+            </button>
+          </div>
+
           <button onClick={handleAuth} className="w-full bg-white text-black py-4 rounded-lg font-bold hover:bg-[#ccc] transition uppercase tracking-widest text-xs">
             {isSignUp ? 'Sign Up' : 'Log In'}
           </button>
+          
+          {!isSignUp && (
+            <p onClick={handleForgotPassword} className="text-center mt-4 text-[10px] text-[#444] hover:text-white cursor-pointer transition uppercase tracking-widest font-bold">
+              Forgot Password?
+            </p>
+          )}
+
           <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white transition">
             {isSignUp ? 'Back to Login' : 'Create Account'}
           </p>
@@ -246,7 +285,21 @@ export default function DistributedFileHub() {
                 <h3 className="text-xl font-bold mb-4 tracking-tight italic">{modal.title}</h3>
                 <p className="text-sm text-[#888] mb-6 leading-relaxed">{modal.message}</p>
                 {modal.isPrompt && (
-                    <input autoFocus type="password" value={modalInput} onChange={(e) => setModalInput(e.target.value)} className="w-full p-3 bg-black border border-[#333] rounded-lg mb-6 text-white outline-none focus:border-white" />
+                  <div className="relative mb-6">
+                    <input 
+                      autoFocus 
+                      type={showPassword ? "text" : "password"} 
+                      value={modalInput} 
+                      onChange={(e) => setModalInput(e.target.value)} 
+                      className="w-full p-3 bg-black border border-[#333] rounded-lg text-white outline-none focus:border-white pr-10" 
+                    />
+                    <button 
+                      onClick={() => setShowPassword(!showPassword)} 
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[#444] text-xs"
+                    >
+                      {showPassword ? "👁️" : "👁️‍🗨️"}
+                    </button>
+                  </div>
                 )}
                 <div className="flex gap-4">
                     <button 
@@ -270,6 +323,7 @@ export default function DistributedFileHub() {
         </div>
       )}
 
+      {/* SIDEBAR AND MAIN CONTENT REMAINS THE SAME AS LAST SUCCESSFUL VERSION */}
       <aside className="w-64 bg-black border-r border-[#222] p-6 flex flex-col">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
@@ -373,25 +427,18 @@ export default function DistributedFileHub() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {filesList.map(f => (
                 <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all relative">
-                  {/* Status Badge - Pinned to Top */}
                   <div className="absolute top-4 right-4"><span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-500'}`}>{f.is_public ? 'Public' : 'Private'}</span></div>
-                  
                   <div className="flex flex-col h-full">
-                    {/* File Header */}
                     <div className="flex justify-between items-start mb-4 pt-2">
                         <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black">
                             {f.file_name.split('.').pop()}
                         </div>
                     </div>
-                    
                     <h4 className="font-bold text-sm truncate mb-1 text-slate-200">{f.file_name}</h4>
-                    
                     <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase mb-4">
                         <span>{f.owner_username}</span>
                         <span>{(f.file_size/1024).toFixed(1)} KB</span>
                     </div>
-
-                    {/* ACTION BUTTONS: Moved down with pt-4 and border-t */}
                     <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
                         <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white transition text-xs">💾</button>
                         {(user.id === f.user_id || isFolderOwner) && (
