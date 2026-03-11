@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
 export default function DistributedFileHub() {
@@ -9,7 +9,7 @@ export default function DistributedFileHub() {
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
-  const [showPassword, setShowPassword] = useState(false); // Eye Toggle State
+  const [showPassword, setShowPassword] = useState(false); 
   
   const [filesList, setFilesList] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
@@ -26,6 +26,9 @@ export default function DistributedFileHub() {
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
+
+  // Ref to handle the file input DOM directly for clearing
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [modal, setModal] = useState<{
     show: boolean, 
@@ -52,7 +55,6 @@ export default function DistributedFileHub() {
       setUser(currentUser);
       if (currentUser) fetchProfile(currentUser);
       
-      // Handle password recovery redirection
       if (event === 'PASSWORD_RECOVERY') {
         handleChangePassword();
       }
@@ -158,7 +160,6 @@ export default function DistributedFileHub() {
     }
   };
 
-  // FORGET PASSWORD FUNCTION
   const handleForgotPassword = async () => {
     if (!email) return showAlert("Notice", "Please enter your email address first.");
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -181,6 +182,7 @@ export default function DistributedFileHub() {
         is_public: isPublic, owner_username: displayName, user_id: user.id, folder_id: selectedFolder
       }]);
       setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = ""; 
       fetchFiles();
     } finally { setUploading(false); }
   };
@@ -323,7 +325,6 @@ export default function DistributedFileHub() {
         </div>
       )}
 
-      {/* SIDEBAR AND MAIN CONTENT REMAINS THE SAME AS LAST SUCCESSFUL VERSION */}
       <aside className="w-64 bg-black border-r border-[#222] p-6 flex flex-col">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
@@ -332,23 +333,23 @@ export default function DistributedFileHub() {
         <nav className="flex-1 space-y-1 overflow-y-auto">
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
           {isAdmin && (
-            <button onClick={() => setViewingAdminPanel(true)} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white' : 'text-blue-500 border border-blue-900/30'}`}>🛠️ Admin</button>
+            <button onClick={() => setViewingAdminPanel(true)} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
           )}
           <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
           {folders.map(folder => (
             <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
               <span className="truncate pr-4">📂 {folder.name}</span>
-              {folder.user_id === user.id && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500">✕</span>}
+              {folder.user_id === user.id && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer">✕</span>}
             </button>
           ))}
         </nav>
         <div className="mt-auto pt-6 border-t border-[#222]">
-          <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-2 text-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
+          <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-2 text-white outline-none focus:border-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
           <div className="flex items-center gap-2 mb-4">
             <input type="checkbox" checked={folderIsPublic} onChange={e => setFolderIsPublic(e.target.checked)} id="fvis" className="rounded bg-black border-[#333]" />
             <label htmlFor="fvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
           </div>
-          <button onClick={createFolder} className="w-full py-2.5 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest">NEW FOLDER</button>
+          <button onClick={createFolder} className="w-full py-2.5 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc]">CREATE FOLDER</button>
         </div>
       </aside>
 
@@ -412,10 +413,31 @@ export default function DistributedFileHub() {
                     <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
                     <div className="flex flex-col md:flex-row items-center gap-6">
                         <div className="flex-1 flex items-center gap-4 w-full">
-                            <input type="file" key={file ? 'loaded' : 'empty'} onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:bg-black file:text-white" />
-                            {file && <button onClick={() => setFile(null)} className="px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest">Clear</button>}
+                            {/* Corrected Input: Uses ref to clear properly */}
+                            <input 
+                              type="file" 
+                              ref={fileInputRef}
+                              onChange={e => setFile(e.target.files?.[0] || null)} 
+                              className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:bg-black file:text-white cursor-pointer" 
+                            />
+                            {file && (
+                              <button 
+                                onClick={() => {
+                                  setFile(null);
+                                  if (fileInputRef.current) fileInputRef.current.value = "";
+                                }} 
+                                className="px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10"
+                              >
+                                CLEAR
+                              </button>
+                            )}
                         </div>
-                        <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
+                        <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#ccc]">{uploading ? 'Wait' : 'Distribute'}</button>
+                    </div>
+                    {/* RESTORED: PUBLIC GROUP check mark for files */}
+                    <div className="mt-4 flex items-center gap-2">
+                        <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
+                        <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
                     </div>
                 </section>
             ) : (
