@@ -437,12 +437,12 @@ export default function DistributedFileHub() {
                     {/* RESTORED: PUBLIC GROUP check mark for files */}
                     <div className="mt-4 flex items-center gap-2">
                         <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-                        <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
+                        <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC FILE</label>
                     </div>
                 </section>
             ) : (
                 <div className="bg-amber-500/10 border border-amber-900/30 p-8 rounded-2xl mb-16 text-center">
-                    <p className="text-amber-500 text-sm font-bold uppercase tracking-widest">Node Locked by {currentFolder?.owner_username}.</p>
+                    <p className="text-amber-500 text-sm font-bold uppercase tracking-widest">Folder is Locked by {currentFolder?.owner_username}.</p>
                 </div>
             )}
 
