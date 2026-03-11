@@ -26,6 +26,7 @@ export default function DistributedFileHub() {
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
 
+  // MODAL STATE
   const [modal, setModal] = useState<{
     show: boolean, 
     title: string, 
@@ -107,7 +108,6 @@ export default function DistributedFileHub() {
     if (!error) fetchFiles();
   };
 
-  // Requirement 1 & 3: Folder Privacy & Lock Toggles
   const toggleFolderStatus = async (folderId: string, column: string, currentStatus: boolean) => {
     await supabase.from('folders').update({ [column]: !currentStatus }).eq('id', folderId);
     fetchFolders();
@@ -119,7 +119,7 @@ export default function DistributedFileHub() {
         name: newFolderName, 
         user_id: user.id, 
         is_public: folderIsPublic,
-        owner_username: profileName // Requirement 2
+        owner_username: profileName
     }]);
     setNewFolderName('');
     fetchFolders();
@@ -127,13 +127,15 @@ export default function DistributedFileHub() {
 
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
-    showPrompt("Delete Folder", "Type 'DELETE' to confirm.", (val) => {
-        if(val === 'DELETE') {
-            supabase.from('folders').delete().eq('id', folderId).then(() => {
-                if (selectedFolder === folderId) setSelectedFolder(null);
-                fetchFolders();
-            });
+    showPrompt("Delete Folder", "Type 'DELETE' to confirm folder removal.", (val) => {
+        if(val !== 'DELETE') {
+            showAlert("Error", "Validation failed. Type 'DELETE' in all caps.", () => handleFolderDelete(e, folderId));
+            return;
         }
+        supabase.from('folders').delete().eq('id', folderId).then(() => {
+            if (selectedFolder === folderId) setSelectedFolder(null);
+            fetchFolders();
+        });
     });
   };
 
@@ -177,13 +179,16 @@ export default function DistributedFileHub() {
     }
   };
 
+  // UPDATED: Strict Validation with Retry Loop
   const handleDeleteFile = async (id: string, path: string) => {
-    showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", (val) => {
-        if(val === 'CONFIRM') {
-            supabase.storage.from('user-files').remove([path]).then(() => {
-                supabase.from('files').delete().eq('id', id).then(() => fetchFiles());
-            });
+    showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
+        if (val !== 'CONFIRM') {
+            showAlert("Error", "Validation failed. Type 'CONFIRM' exactly.", () => handleDeleteFile(id, path));
+            return;
         }
+        await supabase.storage.from('user-files').remove([path]);
+        await supabase.from('files').delete().eq('id', id);
+        fetchFiles();
     });
   };
 
@@ -213,7 +218,7 @@ export default function DistributedFileHub() {
                 <div className="bg-[#111] border border-[#333] p-8 rounded-2xl max-w-sm w-full shadow-2xl">
                     <h3 className="text-xl font-bold mb-4 italic text-white">{modal.title}</h3>
                     <p className="text-sm text-[#888] mb-6">{modal.message}</p>
-                    <button onClick={() => setModal({ ...modal, show: false })} className="w-full bg-white text-black py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest">Try Again</button>
+                    <button onClick={() => setModal({ ...modal, show: false })} className="w-full bg-red-600 text-white py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest">Try Again</button>
                 </div>
             </div>
         )}
@@ -246,14 +251,19 @@ export default function DistributedFileHub() {
                     <input autoFocus type="password" value={modalInput} onChange={(e) => setModalInput(e.target.value)} className="w-full p-3 bg-black border border-[#333] rounded-lg mb-6 text-white outline-none focus:border-white" />
                 )}
                 <div className="flex gap-4">
-                    <button onClick={() => {
-                        const retryAction = modal.onRetry;
-                        const confirmAction = modal.onConfirm;
-                        const currentInput = modalInput;
-                        setModal({ ...modal, show: false });
-                        if (modal.title === "Error" && retryAction) setTimeout(() => retryAction(), 100);
-                        else if (modal.isPrompt && confirmAction) confirmAction(currentInput);
-                    }} className="flex-1 bg-white text-black py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest">
+                    <button 
+                        onClick={() => {
+                            const retryAction = modal.onRetry;
+                            const confirmAction = modal.onConfirm;
+                            const currentInput = modalInput;
+                            setModal({ ...modal, show: false });
+                            if (modal.title === "Error" && retryAction) setTimeout(() => retryAction(), 100);
+                            else if (modal.isPrompt && confirmAction) confirmAction(currentInput);
+                        }} 
+                        className={`flex-1 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${
+                            modal.title === "Error" ? "bg-red-600 text-white" : "bg-white text-black"
+                        }`}
+                    >
                         {modal.title === "Error" ? "Try Again" : "Confirm"}
                     </button>
                     <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 border border-[#333] py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest text-[#444] hover:text-white">Cancel</button>
@@ -276,7 +286,7 @@ export default function DistributedFileHub() {
           {folders.map(folder => (
             <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
               <span className="truncate pr-4">📂 {folder.name}</span>
-              {folder.user_id === user.id && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] opacity-0 group-hover:opacity-100 hover:text-red-500">✕</span>}
+              {folder.user_id === user.id && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500">✕</span>}
             </button>
           ))}
         </nav>
@@ -328,17 +338,14 @@ export default function DistributedFileHub() {
           <>
             <header className="mb-16">
               <h2 className="text-3xl font-bold tracking-tight text-white">{currentFolder ? currentFolder.name : 'Root Explorer'}</h2>
-              {/* Requirement 2: Show owner inside folder */}
               {currentFolder && (
                 <div className="mt-2 flex items-center gap-4">
                     <p className="text-[#888] text-sm italic">Owner: <span className="text-white font-bold">{currentFolder.owner_username}</span></p>
                     {isFolderOwner && (
                         <div className="flex gap-4 border-l border-[#333] pl-4">
-                            {/* Requirement 1: Toggle Privacy */}
                             <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_public', currentFolder.is_public)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border ${currentFolder.is_public ? 'border-green-900 text-green-500' : 'border-red-900 text-red-500'}`}>
                                 {currentFolder.is_public ? '🌐 Public' : '🔒 Private'}
                             </button>
-                            {/* Requirement 3: Toggle Lock */}
                             <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_locked', currentFolder.is_locked)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border ${currentFolder.is_locked ? 'border-amber-900 text-amber-500' : 'border-[#333] text-[#888]'}`}>
                                 {currentFolder.is_locked ? '🚫 Locked' : '🔓 Unlocked'}
                             </button>
@@ -348,7 +355,6 @@ export default function DistributedFileHub() {
               )}
             </header>
 
-            {/* Requirement 3: Prevent upload if locked and not owner */}
             {(!currentFolder?.is_locked || isFolderOwner) ? (
                 <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative shadow-2xl">
                     <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
@@ -359,14 +365,10 @@ export default function DistributedFileHub() {
                         </div>
                         <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs uppercase tracking-widest">{uploading ? 'Wait' : 'Distribute'}</button>
                     </div>
-                    <div className="mt-4 flex items-center gap-2">
-                        <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-                        <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
-                    </div>
                 </section>
             ) : (
                 <div className="bg-amber-500/10 border border-amber-900/30 p-8 rounded-2xl mb-16 text-center">
-                    <p className="text-amber-500 text-sm font-bold uppercase tracking-widest">This node is locked by {currentFolder?.owner_username}. Uploads are disabled.</p>
+                    <p className="text-amber-500 text-sm font-bold uppercase tracking-widest">Node Locked by {currentFolder?.owner_username}.</p>
                 </div>
             )}
 
@@ -378,7 +380,6 @@ export default function DistributedFileHub() {
                     <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black">{f.file_name.split('.').pop()}</div>
                     <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-all">
                        <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="text-[#444] hover:text-white transition">💾</button>
-                       {/* Requirement 4: Owner can delete ANY file in their folder */}
                        {(user.id === f.user_id || isFolderOwner) && (
                          <><button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`${f.is_public ? 'text-blue-900' : 'text-amber-900'} hover:text-white transition`}>{f.is_public ? '🌐' : '🔒'}</button>
                          <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="text-[#222] hover:text-red-500 transition">🗑️</button></>
