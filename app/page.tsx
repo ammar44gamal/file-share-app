@@ -26,7 +26,6 @@ export default function DistributedFileHub() {
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
 
-  // MODAL STATE
   const [modal, setModal] = useState<{
     show: boolean, 
     title: string, 
@@ -179,7 +178,6 @@ export default function DistributedFileHub() {
     }
   };
 
-  // UPDATED: Strict Validation with Retry Loop
   const handleDeleteFile = async (id: string, path: string) => {
     showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
         if (val !== 'CONFIRM') {
@@ -375,19 +373,39 @@ export default function DistributedFileHub() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
               {filesList.map(f => (
                 <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all relative">
+                  {/* Status Badge - Pinned to Top */}
                   <div className="absolute top-4 right-4"><span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-500'}`}>{f.is_public ? 'Public' : 'Private'}</span></div>
-                  <div className="flex justify-between items-start mb-6 pt-2">
-                    <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black">{f.file_name.split('.').pop()}</div>
-                    <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-all">
-                       <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="text-[#444] hover:text-white transition">💾</button>
-                       {(user.id === f.user_id || isFolderOwner) && (
-                         <><button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`${f.is_public ? 'text-blue-900' : 'text-amber-900'} hover:text-white transition`}>{f.is_public ? '🌐' : '🔒'}</button>
-                         <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="text-[#222] hover:text-red-500 transition">🗑️</button></>
-                       )}
+                  
+                  <div className="flex flex-col h-full">
+                    {/* File Header */}
+                    <div className="flex justify-between items-start mb-4 pt-2">
+                        <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black">
+                            {f.file_name.split('.').pop()}
+                        </div>
+                    </div>
+                    
+                    <h4 className="font-bold text-sm truncate mb-1 text-slate-200">{f.file_name}</h4>
+                    
+                    <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase mb-4">
+                        <span>{f.owner_username}</span>
+                        <span>{(f.file_size/1024).toFixed(1)} KB</span>
+                    </div>
+
+                    {/* ACTION BUTTONS: Moved down with pt-4 and border-t */}
+                    <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                        <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white transition text-xs">💾</button>
+                        {(user.id === f.user_id || isFolderOwner) && (
+                            <>
+                                <button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-white transition text-xs ${f.is_public ? 'text-blue-900' : 'text-amber-900'}`}>
+                                    {f.is_public ? '🌐' : '🔒'}
+                                </button>
+                                <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-red-500 transition text-xs text-[#222]">
+                                    🗑️
+                                </button>
+                            </>
+                        )}
                     </div>
                   </div>
-                  <h4 className="font-bold text-sm truncate mb-1 text-slate-200">{f.file_name}</h4>
-                  <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase"><span>{f.owner_username}</span><span>{(f.file_size/1024).toFixed(1)} KB</span></div>
                 </div>
               ))}
             </div>
