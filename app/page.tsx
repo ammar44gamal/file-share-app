@@ -34,7 +34,6 @@ export default function DistributedFileHub() {
   }>({ show: false, title: '', message: '', isPrompt: false });
   const [modalInput, setModalInput] = useState('');
 
-  // 1. INITIAL AUTH & PROFILE SYNC
   useEffect(() => {
     const initSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -55,7 +54,6 @@ export default function DistributedFileHub() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. DATA FETCHING (Triggered after isAdmin is confirmed)
   useEffect(() => {
     if (user) {
       fetchFolders();
@@ -79,8 +77,6 @@ export default function DistributedFileHub() {
     const status = !!(data?.is_admin || isMasterEmail);
     
     setIsAdmin(status);
-    console.log("Admin Check:", status); // Check your console (F12) to see if this is true
-    
     if (data?.username) setProfileName(data.username); 
     else setProfileName(currentUser.email.split('@')[0]);
   };
@@ -110,11 +106,11 @@ export default function DistributedFileHub() {
     e.stopPropagation();
     showPrompt("Delete Folder", "Type 'DELETE' to confirm.", async (val) => {
         if(val.trim().toUpperCase() !== 'DELETE') {
-            showAlert("Error", "Validation failed.", () => handleFolderDelete(e, folderId));
+            showAlert("Error", "Validation failed. Type 'DELETE'.", () => handleFolderDelete(e, folderId));
             return;
         }
         const { error } = await supabase.from('folders').delete().eq('id', folderId);
-        if (error) showAlert("Error", error.message);
+        if (error) showAlert("Database Error", error.message);
         else {
             if (selectedFolder === folderId) setSelectedFolder(null);
             fetchFolders();
@@ -125,37 +121,14 @@ export default function DistributedFileHub() {
   const handleDeleteFile = async (id: string, path: string) => {
     showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
         if (val.trim().toUpperCase() !== 'CONFIRM') {
-            showAlert("Error", "Validation failed.", () => handleDeleteFile(id, path));
+            showAlert("Error", "Validation failed. Type 'CONFIRM'.", () => handleDeleteFile(id, path));
             return;
         }
         await supabase.storage.from('user-files').remove([path]);
         const { error } = await supabase.from('files').delete().eq('id', id);
-        if (error) showAlert("Error", error.message);
+        if (error) showAlert("Database Error", error.message);
         else fetchFiles();
     });
-  };
-
-  // ... (Rest of your helper functions: handleAuth, handleUpload, etc.)
-  const toggleFilePrivacy = async (fileId: string, currentStatus: boolean) => {
-    const { error } = await supabase.from('files').update({ is_public: !currentStatus }).eq('id', fileId);
-    if (!error) fetchFiles();
-  };
-
-  const toggleFolderStatus = async (folderId: string, column: string, currentStatus: boolean) => {
-    await supabase.from('folders').update({ [column]: !currentStatus }).eq('id', folderId);
-    fetchFolders();
-  };
-
-  const createFolder = async () => {
-    if (!newFolderName || !user) return;
-    await supabase.from('folders').insert([{ 
-        name: newFolderName, 
-        user_id: user.id, 
-        is_public: folderIsPublic,
-        owner_username: profileName
-    }]);
-    setNewFolderName('');
-    fetchFolders();
   };
 
   const handleAuth = async () => {
@@ -205,6 +178,28 @@ export default function DistributedFileHub() {
       const a = document.createElement('a');
       a.href = url; a.download = name; a.click();
     }
+  };
+
+  const toggleFilePrivacy = async (fileId: string, currentStatus: boolean) => {
+    const { error } = await supabase.from('files').update({ is_public: !currentStatus }).eq('id', fileId);
+    if (!error) fetchFiles();
+  };
+
+  const toggleFolderStatus = async (folderId: string, column: string, currentStatus: boolean) => {
+    await supabase.from('folders').update({ [column]: !currentStatus }).eq('id', folderId);
+    fetchFolders();
+  };
+
+  const createFolder = async () => {
+    if (!newFolderName || !user) return;
+    await supabase.from('folders').insert([{ 
+        name: newFolderName, 
+        user_id: user.id, 
+        is_public: folderIsPublic,
+        owner_username: profileName
+    }]);
+    setNewFolderName('');
+    fetchFolders();
   };
 
   const handleLogout = async () => {
@@ -280,10 +275,14 @@ export default function DistributedFileHub() {
                         const confirmAction = modal.onConfirm;
                         const currentInput = modalInput;
                         setModal({ ...modal, show: false });
-                        if (modal.title === "Error" && retryAction) setTimeout(() => retryAction(), 100);
-                        else if (modal.isPrompt && confirmAction) confirmAction(currentInput);
-                    }} className={`flex-1 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${modal.title === "Error" ? "bg-red-600 text-white" : "bg-white text-black"}`}>
-                        {modal.title === "Error" ? "Try Again" : "Confirm"}
+                        // FIXED PRECEDENCE BUG
+                        if ((modal.title === "Error" || modal.title === "Database Error") && retryAction) {
+                            setTimeout(() => retryAction(), 100);
+                        } else if (modal.isPrompt && confirmAction) {
+                            confirmAction(currentInput);
+                        }
+                    }} className={`flex-1 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${modal.title.includes("Error") ? "bg-red-600 text-white" : "bg-white text-black"}`}>
+                        {modal.title.includes("Error") ? "Try Again" : "Confirm"}
                     </button>
                     <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 border border-[#333] py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest text-[#444] hover:text-white">Cancel</button>
                 </div>
