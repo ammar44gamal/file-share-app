@@ -27,27 +27,33 @@ export default function DistributedFileHub() {
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
 
+  // Fix: Use a ref to reset the file input UI
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [modal, setModal] = useState<{
-    show: boolean, title: string, message: string, onConfirm?: (val: string) => void, onRetry?: () => void, isPrompt?: boolean
-  }>({ show: false, title: '', message: '', isPrompt: false });
+    show: boolean, 
+    title: string, 
+    message: string, 
+    onConfirm?: (val: string) => void, 
+    onRetry?: () => void,
+    isPrompt?: boolean
+  }>({
+    show: false, title: '', message: '', isPrompt: false
+  });
   const [modalInput, setModalInput] = useState('');
 
   useEffect(() => {
-    const initSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setUser(session.user);
-        await fetchProfile(session.user);
+        fetchProfile(session.user);
       }
-    };
-    initSession();
+    });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      if (currentUser) await fetchProfile(currentUser);
+      if (currentUser) fetchProfile(currentUser);
       if (event === 'PASSWORD_RECOVERY') handleChangePassword();
     });
 
@@ -66,26 +72,38 @@ export default function DistributedFileHub() {
     setModal({ show: true, title, message, isPrompt: false, onRetry: retryAction });
   };
 
+  // Fixed TypeScript typing for Vercel Build
   const showPrompt = (title: string, message: string, onConfirm: (val: string) => void) => {
     setModalInput('');
-    setModal({ show: true, title, message, isPrompt: true, onConfirm: (val: string) => onConfirm(val) });
+    setModal({ 
+        show: true, 
+        title, 
+        message, 
+        isPrompt: true, 
+        onConfirm: (val: string) => onConfirm(val) 
+    });
   };
 
   const fetchProfile = async (currentUser: any) => {
     const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
-    const status = !!(data?.is_admin || isMasterEmail);
-    setIsAdmin(status);
-    if (data?.username) setProfileName(data.username); 
-    else setProfileName(currentUser.email.split('@')[0]);
+    if (data && data.username) {
+      setProfileName(data.username); 
+      setIsAdmin(data.is_admin || isMasterEmail); 
+    } else {
+      setProfileName(currentUser.email.split('@')[0]);
+      setIsAdmin(isMasterEmail);
+    }
+  };
+
+  const fetchAdminStats = async () => {
+    // Ensuring we fetch identity names for the Registry
+    const { data } = await supabase.from('admin_user_stats').select('*');
+    setAdminUserList(data || []);
   };
 
   const fetchFolders = async () => {
-    let query = supabase.from('folders').select('*').order('name');
-    if (!isAdmin) {
-      query = query.or(`is_public.eq.true,user_id.eq.${user.id}`);
-    }
-    const { data } = await query;
+    const { data } = await supabase.from('folders').select('*').order('name');
     setFolders(data || []);
   };
 
@@ -93,73 +111,44 @@ export default function DistributedFileHub() {
     let query = supabase.from('files').select('*').order('created_at', { ascending: false });
     if (selectedFolder) query = query.eq('folder_id', selectedFolder);
     else query = query.is('folder_id', null);
-
-    if (!isAdmin) {
-      query = query.or(`is_public.eq.true,user_id.eq.${user.id}`);
-    }
     const { data } = await query;
     setFilesList(data || []);
   };
 
-  const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
-    e.stopPropagation();
-    showPrompt("Delete Folder", "Type 'DELETE' to confirm.", async (val) => {
-        if(val.trim().toUpperCase() !== 'DELETE') {
-            showAlert("Error", "Validation failed.", () => handleFolderDelete(e, folderId));
-            return;
-        }
-        const { error } = await supabase.from('folders').delete().eq('id', folderId);
-        if (error) showAlert("Database Error", error.message);
-        else {
-            if (selectedFolder === folderId) setSelectedFolder(null);
-            fetchFolders();
-        }
-    });
+  const toggleFilePrivacy = async (fileId: string, currentStatus: boolean) => {
+    const { error } = await supabase.from('files').update({ is_public: !currentStatus }).eq('id', fileId);
+    if (!error) fetchFiles();
   };
 
-  const handleDeleteFile = async (id: string, path: string) => {
-    showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
-        if (val.trim().toUpperCase() !== 'CONFIRM') {
-            showAlert("Error", "Validation failed.", () => handleDeleteFile(id, path));
-            return;
-        }
-        await supabase.storage.from('user-files').remove([path]);
-        const { error } = await supabase.from('files').delete().eq('id', id);
-        if (error) showAlert("Database Error", error.message);
-        else fetchFiles();
-    });
+  const toggleFolderStatus = async (folderId: string, column: string, currentStatus: boolean) => {
+    await supabase.from('folders').update({ [column]: !currentStatus }).eq('id', folderId);
+    fetchFolders();
   };
 
   const createFolder = async () => {
     if (!newFolderName || !user) return;
-    const { error } = await supabase.from('folders').insert([{ 
+    await supabase.from('folders').insert([{ 
         name: newFolderName, 
         user_id: user.id, 
         is_public: folderIsPublic,
         owner_username: profileName
     }]);
-    if (error) showAlert("Error", error.message);
-    else {
-        setNewFolderName('');
-        fetchFolders();
-    }
+    setNewFolderName('');
+    fetchFolders();
   };
 
-  const handleUpload = async () => {
-    if (!file || !user) return;
-    setUploading(true);
-    try {
-      const fileName = `${Math.random()}.${file.name.split('.').pop()}`;
-      await supabase.storage.from('user-files').upload(fileName, file);
-      const displayName = profileName || user.email.split('@')[0];
-      await supabase.from('files').insert([{ 
-        file_name: file.name, file_size: file.size, storage_path: fileName,
-        is_public: isPublic, owner_username: displayName, user_id: user.id, folder_id: selectedFolder
-      }]);
-      setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = ""; 
-      fetchFiles();
-    } finally { setUploading(false); }
+  const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
+    e.stopPropagation();
+    showPrompt("Delete Folder", "Type 'DELETE' to confirm.", (val) => {
+        if(val !== 'DELETE') {
+            showAlert("Error", "Validation failed.", () => handleFolderDelete(e, folderId));
+            return;
+        }
+        supabase.from('folders').delete().eq('id', folderId).then(() => {
+            if (selectedFolder === folderId) setSelectedFolder(null);
+            fetchFolders();
+        });
+    });
   };
 
   const handleAuth = async () => {
@@ -185,14 +174,21 @@ export default function DistributedFileHub() {
     else showAlert("Success", "Recovery link sent to your email!");
   };
 
-  const toggleFilePrivacy = async (fileId: string, currentStatus: boolean) => {
-    const { error } = await supabase.from('files').update({ is_public: !currentStatus }).eq('id', fileId);
-    if (!error) fetchFiles();
-  };
-
-  const toggleFolderStatus = async (folderId: string, column: string, currentStatus: boolean) => {
-    await supabase.from('folders').update({ [column]: !currentStatus }).eq('id', folderId);
-    fetchFolders();
+  const handleUpload = async () => {
+    if (!file || !user) return;
+    setUploading(true);
+    try {
+      const fileName = `${Math.random()}.${file.name.split('.').pop()}`;
+      await supabase.storage.from('user-files').upload(fileName, file);
+      const displayName = profileName || user.email.split('@')[0];
+      await supabase.from('files').insert([{ 
+        file_name: file.name, file_size: file.size, storage_path: fileName,
+        is_public: isPublic, owner_username: displayName, user_id: user.id, folder_id: selectedFolder
+      }]);
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = ""; 
+      fetchFiles();
+    } finally { setUploading(false); }
   };
 
   const handleDownload = async (path: string, name: string) => {
@@ -202,6 +198,18 @@ export default function DistributedFileHub() {
       const a = document.createElement('a');
       a.href = url; a.download = name; a.click();
     }
+  };
+
+  const handleDeleteFile = async (id: string, path: string) => {
+    showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
+        if (val !== 'CONFIRM') {
+            showAlert("Error", "Validation failed.", () => handleDeleteFile(id, path));
+            return;
+        }
+        await supabase.storage.from('user-files').remove([path]);
+        await supabase.from('files').delete().eq('id', id);
+        fetchFiles();
+    });
   };
 
   const handleLogout = async () => {
@@ -219,14 +227,8 @@ export default function DistributedFileHub() {
     });
   };
 
-  const fetchAdminStats = async () => {
-    const { data } = await supabase.from('admin_user_stats').select('*');
-    setAdminUserList(data || []);
-  };
-
   const currentFolder = folders.find(f => f.id === selectedFolder);
-  const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
-  const isLockedForUser = selectedFolder && currentFolder?.is_locked && !isAdmin;
+  const isFolderOwner = currentFolder?.user_id === user?.id;
 
   if (!user) {
     return (
@@ -277,13 +279,10 @@ export default function DistributedFileHub() {
                         const confirmAction = modal.onConfirm;
                         const currentInput = modalInput;
                         setModal({ ...modal, show: false });
-                        if ((modal.title === "Error" || modal.title === "Database Error") && retryAction) {
-                            setTimeout(() => retryAction(), 100);
-                        } else if (modal.isPrompt && confirmAction) {
-                            confirmAction(currentInput);
-                        }
-                    }} className={`flex-1 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${modal.title.includes("Error") ? "bg-red-600 text-white" : "bg-white text-black"}`}>
-                        {modal.title.includes("Error") ? "Try Again" : "Confirm"}
+                        if (modal.title === "Error" && retryAction) setTimeout(() => retryAction(), 100);
+                        else if (modal.isPrompt && confirmAction) confirmAction(currentInput);
+                    }} className={`flex-1 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${modal.title === "Error" ? "bg-red-600 text-white" : "bg-white text-black"}`}>
+                        {modal.title === "Error" ? "Try Again" : "Confirm"}
                     </button>
                     <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 border border-[#333] py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest text-[#444] hover:text-white">Cancel</button>
                 </div>
@@ -303,7 +302,7 @@ export default function DistributedFileHub() {
           {folders.map(folder => (
             <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
               <span className="truncate pr-4">📂 {folder.name}</span>
-              {(folder.user_id === user.id || isAdmin) && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer">✕</span>}
+              {folder.user_id === user.id && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer">✕</span>}
             </button>
           ))}
         </nav>
@@ -358,7 +357,7 @@ export default function DistributedFileHub() {
               {currentFolder && (
                 <div className="mt-2 flex items-center gap-4">
                     <p className="text-[#888] text-sm italic">Owner: <span className="text-white font-bold">{currentFolder.owner_username}</span></p>
-                    {canManageFolder && (
+                    {isFolderOwner && (
                         <div className="flex gap-4 border-l border-[#333] pl-4">
                             <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_public', currentFolder.is_public)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border ${currentFolder.is_public ? 'border-green-900 text-green-500' : 'border-red-900 text-red-500'}`}>{currentFolder.is_public ? '🌐 Public' : '🔒 Private'}</button>
                             <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_locked', currentFolder.is_locked)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border ${currentFolder.is_locked ? 'border-amber-900 text-amber-500' : 'border-[#333] text-[#888]'}`}>{currentFolder.is_locked ? '🚫 Locked' : '🔓 Unlocked'}</button>
@@ -368,15 +367,21 @@ export default function DistributedFileHub() {
               )}
             </header>
 
-            {!isLockedForUser ? (
+            {(!currentFolder?.is_locked || isFolderOwner) ? (
                 <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative shadow-2xl">
                     <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
                     <div className="flex flex-col md:flex-row items-center gap-6">
                         <div className="flex-1 flex items-center gap-4 w-full">
+                            {/* Restored proper input binding */}
                             <input type="file" ref={fileInputRef} onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:bg-black file:text-white cursor-pointer" />
                             {file && <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10">CLEAR</button>}
                         </div>
                         <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#ccc]">{uploading ? 'Wait' : 'Distribute'}</button>
+                    </div>
+                    {/* Restored Check Mark */}
+                    <div className="mt-4 flex items-center gap-2">
+                        <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
+                        <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
                     </div>
                 </section>
             ) : (
@@ -395,9 +400,10 @@ export default function DistributedFileHub() {
                     </div>
                     <h4 className="font-bold text-sm truncate mb-1 text-slate-200">{f.file_name}</h4>
                     <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase mb-4"><span>{f.owner_username}</span><span>{(f.file_size/1024).toFixed(1)} KB</span></div>
+                    {/* Restored properly spaced buttons */}
                     <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
                         <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white transition text-xs">💾</button>
-                        {(user.id === f.user_id || canManageFolder) && (
+                        {(user.id === f.user_id || isFolderOwner) && (
                             <><button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-white transition text-xs ${f.is_public ? 'text-blue-900' : 'text-amber-900'}`}>{f.is_public ? '🌐' : '🔒'}</button>
                             <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-red-500 transition text-xs text-[#222]">🗑️</button></>
                         )}
