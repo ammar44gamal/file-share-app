@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
-// Requirement: Standard Default Export for Next.js Build
 export default function DistributedFileHub() {
   const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState('');
@@ -60,6 +59,7 @@ export default function DistributedFileHub() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Sync Data when Admin status or Folder selection changes
   useEffect(() => {
     if (user) {
       fetchFolders();
@@ -80,13 +80,11 @@ export default function DistributedFileHub() {
   const fetchProfile = async (currentUser: any) => {
     const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
-    if (data && data.username) {
-      setProfileName(data.username); 
-      setIsAdmin(data.is_admin || isMasterEmail); 
-    } else {
-      setProfileName(currentUser.email.split('@')[0]);
-      setIsAdmin(isMasterEmail);
-    }
+    const adminStatus = data?.is_admin || isMasterEmail;
+    
+    setIsAdmin(adminStatus);
+    if (data && data.username) setProfileName(data.username); 
+    else setProfileName(currentUser.email.split('@')[0]);
   };
 
   const fetchAdminStats = async () => {
@@ -94,7 +92,7 @@ export default function DistributedFileHub() {
     setAdminUserList(data || []);
   };
 
-  // Requirement: Admin sees ALL folders (even private ones)
+  // FIX: Admin sees ALL folders
   const fetchFolders = async () => {
     let query = supabase.from('folders').select('*').order('name');
     if (!isAdmin) {
@@ -104,7 +102,7 @@ export default function DistributedFileHub() {
     setFolders(data || []);
   };
 
-  // Requirement: Admin sees ALL files (even private ones)
+  // FIX: Admin sees ALL files
   const fetchFiles = async () => {
     let query = supabase.from('files').select('*').order('created_at', { ascending: false });
     if (selectedFolder) query = query.eq('folder_id', selectedFolder);
@@ -139,11 +137,12 @@ export default function DistributedFileHub() {
     fetchFolders();
   };
 
+  // FIX: Explicit DELETE validation
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
     showPrompt("Delete Folder", "Type 'DELETE' to confirm.", (val) => {
-        if(val !== 'DELETE') {
-            showAlert("Error", "Validation failed.", () => handleFolderDelete(e, folderId));
+        if(val.trim().toUpperCase() !== 'DELETE') {
+            showAlert("Error", "Incorrect input. Type 'DELETE'.", () => handleFolderDelete(e, folderId));
             return;
         }
         supabase.from('folders').delete().eq('id', folderId).then(() => {
@@ -202,10 +201,11 @@ export default function DistributedFileHub() {
     }
   };
 
+  // FIX: Explicit CONFIRM validation
   const handleDeleteFile = async (id: string, path: string) => {
     showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
-        if (val !== 'CONFIRM') {
-            showAlert("Error", "Validation failed.", () => handleDeleteFile(id, path));
+        if (val.trim().toUpperCase() !== 'CONFIRM') {
+            showAlert("Error", "Incorrect input. Type 'CONFIRM'.", () => handleDeleteFile(id, path));
             return;
         }
         await supabase.storage.from('user-files').remove([path]);
@@ -230,9 +230,7 @@ export default function DistributedFileHub() {
   };
 
   const currentFolder = folders.find(f => f.id === selectedFolder);
-  
-  // Requirement: Admin Overrides for Locking and Ownership
-  const isFolderOwner = currentFolder?.user_id === user?.id || isAdmin;
+  const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
   const isLockedForUser = currentFolder?.is_locked && !isAdmin;
 
   if (!user) {
@@ -362,7 +360,7 @@ export default function DistributedFileHub() {
               {currentFolder && (
                 <div className="mt-2 flex items-center gap-4">
                     <p className="text-[#888] text-sm italic">Owner: <span className="text-white font-bold">{currentFolder.owner_username}</span></p>
-                    {isFolderOwner && (
+                    {canManageFolder && (
                         <div className="flex gap-4 border-l border-[#333] pl-4">
                             <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_public', currentFolder.is_public)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border ${currentFolder.is_public ? 'border-green-900 text-green-500' : 'border-red-900 text-red-500'}`}>{currentFolder.is_public ? '🌐 Public' : '🔒 Private'}</button>
                             <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_locked', currentFolder.is_locked)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border ${currentFolder.is_locked ? 'border-amber-900 text-amber-500' : 'border-[#333] text-[#888]'}`}>{currentFolder.is_locked ? '🚫 Locked' : '🔓 Unlocked'}</button>
@@ -372,8 +370,7 @@ export default function DistributedFileHub() {
               )}
             </header>
 
-            {/* Requirement: Admin can upload even to locked folders */}
-            {(!isLockedForUser) ? (
+            {!isLockedForUser ? (
                 <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative shadow-2xl">
                     <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
                     <div className="flex flex-col md:flex-row items-center gap-6">
@@ -382,10 +379,6 @@ export default function DistributedFileHub() {
                             {file && <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10">CLEAR</button>}
                         </div>
                         <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#ccc]">{uploading ? 'Wait' : 'Distribute'}</button>
-                    </div>
-                    <div className="mt-4 flex items-center gap-2">
-                        <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-                        <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
                     </div>
                 </section>
             ) : (
@@ -406,9 +399,7 @@ export default function DistributedFileHub() {
                     <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase mb-4"><span>{f.owner_username}</span><span>{(f.file_size/1024).toFixed(1)} KB</span></div>
                     <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
                         <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white transition text-xs">💾</button>
-                        
-                        {/* Requirement: Admin can manage ANY file */}
-                        {(user.id === f.user_id || isFolderOwner) && (
+                        {(user.id === f.user_id || canManageFolder) && (
                             <><button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-white transition text-xs ${f.is_public ? 'text-blue-900' : 'text-amber-900'}`}>{f.is_public ? '🌐' : '🔒'}</button>
                             <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-red-500 transition text-xs text-[#222]">🗑️</button></>
                         )}
