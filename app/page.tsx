@@ -30,36 +30,32 @@ export default function DistributedFileHub() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [modal, setModal] = useState<{
-    show: boolean, 
-    title: string, 
-    message: string, 
-    onConfirm?: (val: string) => void, 
-    onRetry?: () => void,
-    isPrompt?: boolean
-  }>({
-    show: false, title: '', message: '', isPrompt: false
-  });
+    show: boolean, title: string, message: string, onConfirm?: (val: string) => void, onRetry?: () => void, isPrompt?: boolean
+  }>({ show: false, title: '', message: '', isPrompt: false });
   const [modalInput, setModalInput] = useState('');
 
+  // 1. INITIAL AUTH & PROFILE SYNC
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    const initSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       if (session) {
         setUser(session.user);
-        fetchProfile(session.user);
+        await fetchProfile(session.user);
       }
-    });
+    };
+    initSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
-      if (currentUser) fetchProfile(currentUser);
+      if (currentUser) await fetchProfile(currentUser);
       if (event === 'PASSWORD_RECOVERY') handleChangePassword();
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // Sync Data when Admin status or Folder selection changes
+  // 2. DATA FETCHING (Triggered after isAdmin is confirmed)
   useEffect(() => {
     if (user) {
       fetchFolders();
@@ -80,19 +76,15 @@ export default function DistributedFileHub() {
   const fetchProfile = async (currentUser: any) => {
     const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
-    const adminStatus = data?.is_admin || isMasterEmail;
+    const status = !!(data?.is_admin || isMasterEmail);
     
-    setIsAdmin(adminStatus);
-    if (data && data.username) setProfileName(data.username); 
+    setIsAdmin(status);
+    console.log("Admin Check:", status); // Check your console (F12) to see if this is true
+    
+    if (data?.username) setProfileName(data.username); 
     else setProfileName(currentUser.email.split('@')[0]);
   };
 
-  const fetchAdminStats = async () => {
-    const { data } = await supabase.from('admin_user_stats').select('*');
-    setAdminUserList(data || []);
-  };
-
-  // FIX: Admin sees ALL folders
   const fetchFolders = async () => {
     let query = supabase.from('folders').select('*').order('name');
     if (!isAdmin) {
@@ -102,7 +94,6 @@ export default function DistributedFileHub() {
     setFolders(data || []);
   };
 
-  // FIX: Admin sees ALL files
   const fetchFiles = async () => {
     let query = supabase.from('files').select('*').order('created_at', { ascending: false });
     if (selectedFolder) query = query.eq('folder_id', selectedFolder);
@@ -115,6 +106,36 @@ export default function DistributedFileHub() {
     setFilesList(data || []);
   };
 
+  const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
+    e.stopPropagation();
+    showPrompt("Delete Folder", "Type 'DELETE' to confirm.", async (val) => {
+        if(val.trim().toUpperCase() !== 'DELETE') {
+            showAlert("Error", "Validation failed.", () => handleFolderDelete(e, folderId));
+            return;
+        }
+        const { error } = await supabase.from('folders').delete().eq('id', folderId);
+        if (error) showAlert("Error", error.message);
+        else {
+            if (selectedFolder === folderId) setSelectedFolder(null);
+            fetchFolders();
+        }
+    });
+  };
+
+  const handleDeleteFile = async (id: string, path: string) => {
+    showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
+        if (val.trim().toUpperCase() !== 'CONFIRM') {
+            showAlert("Error", "Validation failed.", () => handleDeleteFile(id, path));
+            return;
+        }
+        await supabase.storage.from('user-files').remove([path]);
+        const { error } = await supabase.from('files').delete().eq('id', id);
+        if (error) showAlert("Error", error.message);
+        else fetchFiles();
+    });
+  };
+
+  // ... (Rest of your helper functions: handleAuth, handleUpload, etc.)
   const toggleFilePrivacy = async (fileId: string, currentStatus: boolean) => {
     const { error } = await supabase.from('files').update({ is_public: !currentStatus }).eq('id', fileId);
     if (!error) fetchFiles();
@@ -135,21 +156,6 @@ export default function DistributedFileHub() {
     }]);
     setNewFolderName('');
     fetchFolders();
-  };
-
-  // FIX: Explicit DELETE validation
-  const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
-    e.stopPropagation();
-    showPrompt("Delete Folder", "Type 'DELETE' to confirm.", (val) => {
-        if(val.trim().toUpperCase() !== 'DELETE') {
-            showAlert("Error", "Incorrect input. Type 'DELETE'.", () => handleFolderDelete(e, folderId));
-            return;
-        }
-        supabase.from('folders').delete().eq('id', folderId).then(() => {
-            if (selectedFolder === folderId) setSelectedFolder(null);
-            fetchFolders();
-        });
-    });
   };
 
   const handleAuth = async () => {
@@ -201,19 +207,6 @@ export default function DistributedFileHub() {
     }
   };
 
-  // FIX: Explicit CONFIRM validation
-  const handleDeleteFile = async (id: string, path: string) => {
-    showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
-        if (val.trim().toUpperCase() !== 'CONFIRM') {
-            showAlert("Error", "Incorrect input. Type 'CONFIRM'.", () => handleDeleteFile(id, path));
-            return;
-        }
-        await supabase.storage.from('user-files').remove([path]);
-        await supabase.from('files').delete().eq('id', id);
-        fetchFiles();
-    });
-  };
-
   const handleLogout = async () => {
     await supabase.auth.signOut();
     localStorage.clear();
@@ -227,6 +220,11 @@ export default function DistributedFileHub() {
         if (error) showAlert("Error", error.message, () => handleChangePassword());
         else showAlert("Success", "Credentials updated.");
     });
+  };
+
+  const fetchAdminStats = async () => {
+    const { data } = await supabase.from('admin_user_stats').select('*');
+    setAdminUserList(data || []);
   };
 
   const currentFolder = folders.find(f => f.id === selectedFolder);
