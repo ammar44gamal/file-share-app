@@ -75,7 +75,6 @@ export default function DistributedFileHub() {
     const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
     const status = !!(data?.is_admin || isMasterEmail);
-    
     setIsAdmin(status);
     if (data?.username) setProfileName(data.username); 
     else setProfileName(currentUser.email.split('@')[0]);
@@ -106,7 +105,7 @@ export default function DistributedFileHub() {
     e.stopPropagation();
     showPrompt("Delete Folder", "Type 'DELETE' to confirm.", async (val) => {
         if(val.trim().toUpperCase() !== 'DELETE') {
-            showAlert("Error", "Validation failed. Type 'DELETE'.", () => handleFolderDelete(e, folderId));
+            showAlert("Error", "Validation failed.", () => handleFolderDelete(e, folderId));
             return;
         }
         const { error } = await supabase.from('folders').delete().eq('id', folderId);
@@ -121,7 +120,7 @@ export default function DistributedFileHub() {
   const handleDeleteFile = async (id: string, path: string) => {
     showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
         if (val.trim().toUpperCase() !== 'CONFIRM') {
-            showAlert("Error", "Validation failed. Type 'CONFIRM'.", () => handleDeleteFile(id, path));
+            showAlert("Error", "Validation failed.", () => handleDeleteFile(id, path));
             return;
         }
         await supabase.storage.from('user-files').remove([path]);
@@ -129,6 +128,38 @@ export default function DistributedFileHub() {
         if (error) showAlert("Database Error", error.message);
         else fetchFiles();
     });
+  };
+
+  const createFolder = async () => {
+    if (!newFolderName || !user) return;
+    const { error } = await supabase.from('folders').insert([{ 
+        name: newFolderName, 
+        user_id: user.id, 
+        is_public: folderIsPublic,
+        owner_username: profileName
+    }]);
+    if (error) showAlert("Error", error.message);
+    else {
+        setNewFolderName('');
+        fetchFolders();
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!file || !user) return;
+    setUploading(true);
+    try {
+      const fileName = `${Math.random()}.${file.name.split('.').pop()}`;
+      await supabase.storage.from('user-files').upload(fileName, file);
+      const displayName = profileName || user.email.split('@')[0];
+      await supabase.from('files').insert([{ 
+        file_name: file.name, file_size: file.size, storage_path: fileName,
+        is_public: isPublic, owner_username: displayName, user_id: user.id, folder_id: selectedFolder
+      }]);
+      setFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = ""; 
+      fetchFiles();
+    } finally { setUploading(false); }
   };
 
   const handleAuth = async () => {
@@ -154,32 +185,6 @@ export default function DistributedFileHub() {
     else showAlert("Success", "Recovery link sent to your email!");
   };
 
-  const handleUpload = async () => {
-    if (!file || !user) return;
-    setUploading(true);
-    try {
-      const fileName = `${Math.random()}.${file.name.split('.').pop()}`;
-      await supabase.storage.from('user-files').upload(fileName, file);
-      const displayName = profileName || user.email.split('@')[0];
-      await supabase.from('files').insert([{ 
-        file_name: file.name, file_size: file.size, storage_path: fileName,
-        is_public: isPublic, owner_username: displayName, user_id: user.id, folder_id: selectedFolder
-      }]);
-      setFile(null);
-      if (fileInputRef.current) fileInputRef.current.value = ""; 
-      fetchFiles();
-    } finally { setUploading(false); }
-  };
-
-  const handleDownload = async (path: string, name: string) => {
-    const { data } = await supabase.storage.from('user-files').download(path);
-    if (data) {
-      const url = URL.createObjectURL(data);
-      const a = document.createElement('a');
-      a.href = url; a.download = name; a.click();
-    }
-  };
-
   const toggleFilePrivacy = async (fileId: string, currentStatus: boolean) => {
     const { error } = await supabase.from('files').update({ is_public: !currentStatus }).eq('id', fileId);
     if (!error) fetchFiles();
@@ -190,16 +195,13 @@ export default function DistributedFileHub() {
     fetchFolders();
   };
 
-  const createFolder = async () => {
-    if (!newFolderName || !user) return;
-    await supabase.from('folders').insert([{ 
-        name: newFolderName, 
-        user_id: user.id, 
-        is_public: folderIsPublic,
-        owner_username: profileName
-    }]);
-    setNewFolderName('');
-    fetchFolders();
+  const handleDownload = async (path: string, name: string) => {
+    const { data } = await supabase.storage.from('user-files').download(path);
+    if (data) {
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url; a.download = name; a.click();
+    }
   };
 
   const handleLogout = async () => {
@@ -224,7 +226,7 @@ export default function DistributedFileHub() {
 
   const currentFolder = folders.find(f => f.id === selectedFolder);
   const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
-  const isLockedForUser = currentFolder?.is_locked && !isAdmin;
+  const isLockedForUser = selectedFolder && currentFolder?.is_locked && !isAdmin;
 
   if (!user) {
     return (
@@ -275,7 +277,6 @@ export default function DistributedFileHub() {
                         const confirmAction = modal.onConfirm;
                         const currentInput = modalInput;
                         setModal({ ...modal, show: false });
-                        // FIXED PRECEDENCE BUG
                         if ((modal.title === "Error" || modal.title === "Database Error") && retryAction) {
                             setTimeout(() => retryAction(), 100);
                         } else if (modal.isPrompt && confirmAction) {
