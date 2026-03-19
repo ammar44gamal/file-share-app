@@ -41,7 +41,6 @@ export default function DistributedFileHub() {
   });
   const [modalInput, setModalInput] = useState('');
 
-  // 1. SESSION & AUTH LISTENER
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -61,7 +60,6 @@ export default function DistributedFileHub() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. DATA SYNCHRONIZATION
   useEffect(() => {
     if (user) {
       fetchFolders();
@@ -70,7 +68,6 @@ export default function DistributedFileHub() {
     }
   }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
 
-  // 3. UI HELPERS
   const showAlert = (title: string, message: string, retryAction?: () => void) => {
     setModal({ show: true, title, message, isPrompt: false, onRetry: retryAction });
   };
@@ -86,9 +83,12 @@ export default function DistributedFileHub() {
     });
   };
 
-  // 4. DATA FETCHING
+  // FIX: Added error catcher so we know if RLS blocks the profile fetch again
   const fetchProfile = async (currentUser: any) => {
-    const { data } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
+    const { data, error } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
+    
+    if (error) console.error("Profile Fetch Error:", error.message);
+
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
     const status = !!(data?.is_admin || isMasterEmail);
     
@@ -102,7 +102,6 @@ export default function DistributedFileHub() {
     setAdminUserList(data || []);
   };
 
-  // FIX: Added explicit error logging so it doesn't fail silently
   const fetchFolders = async () => {
     let query = supabase.from('folders').select('*').order('name');
     if (!isAdmin) {
@@ -113,7 +112,6 @@ export default function DistributedFileHub() {
     setFolders(data || []);
   };
 
-  // FIX: Added explicit error logging
   const fetchFiles = async () => {
     let query = supabase.from('files').select('*').order('created_at', { ascending: false });
     if (selectedFolder) query = query.eq('folder_id', selectedFolder);
@@ -127,7 +125,6 @@ export default function DistributedFileHub() {
     setFilesList(data || []);
   };
 
-  // 5. CORE ACTIONS
   const handleAuth = async () => {
     if (isSignUp) {
       if (!username) return showAlert("Notice", "Please enter a Username.");
@@ -257,12 +254,10 @@ export default function DistributedFileHub() {
     else fetchFiles();
   };
 
-  // 6. PERMISSIONS LOGIC
   const currentFolder = folders.find(f => f.id === selectedFolder);
   const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
   const isLockedForUser = selectedFolder && currentFolder?.is_locked && !canManageFolder;
 
-  // 7. RENDER: NOT LOGGED IN
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black p-6">
@@ -312,11 +307,9 @@ export default function DistributedFileHub() {
     );
   }
 
-  // 8. RENDER: MAIN DASHBOARD
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
       
-      {/* GLOBAL MODAL */}
       {modal.show && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-[#111] border border-[#333] p-8 rounded-2xl max-w-sm w-full shadow-2xl">
@@ -362,7 +355,6 @@ export default function DistributedFileHub() {
         </div>
       )}
 
-      {/* SIDEBAR */}
       <aside className="w-64 bg-black border-r border-[#222] p-6 flex flex-col">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
@@ -395,10 +387,8 @@ export default function DistributedFileHub() {
         </div>
       </aside>
 
-      {/* MAIN CONTENT AREA */}
       <main className="flex-1 overflow-y-auto p-12 relative">
         
-        {/* ACCOUNT MENU */}
         <div className="absolute top-12 right-12 z-50">
           <button onClick={() => setShowAccountMenu(!showAccountMenu)} className="w-10 h-10 rounded-full border border-[#333] bg-[#111] flex items-center justify-center hover:border-white transition-all overflow-hidden shadow-lg font-bold">
               {profileName[0]?.toUpperCase()}
@@ -417,7 +407,6 @@ export default function DistributedFileHub() {
           )}
         </div>
 
-        {/* VIEW LOGIC: ADMIN PANEL VS FILE EXPLORER */}
         {viewingAdminPanel ? (
           <div className="animate-in slide-in-from-bottom-4 duration-500">
             <h2 className="text-3xl font-bold tracking-tight text-white mb-12">Network Registry</h2>
