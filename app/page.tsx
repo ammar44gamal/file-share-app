@@ -121,11 +121,11 @@ export default function DistributedFileHub() {
   const [friends, setFriends] = useState<any[]>([]);
   const [activeChat, setActiveChat] = useState<any>(null);
   
-  // CHAT MESSAGES & NOTIFICATIONS STATE (NEW)
+  // CHAT MESSAGES & NOTIFICATIONS STATE
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatFile, setChatFile] = useState<File | null>(null);
-  const [unreadSenders, setUnreadSenders] = useState<string[]>([]); // Tracks WHO sent you unread messages
+  const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
 
   const chatFileInputRef = useRef<HTMLInputElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -161,12 +161,12 @@ export default function DistributedFileHub() {
       fetchFolders();
       fetchFiles();
       fetchSocialData();
-      checkUnreadMessages(); // NEW: Check for unread dots on load
+      checkUnreadMessages();
       if (isAdmin && viewingAdminPanel) fetchAdminStats();
     }
   }, [user, selectedFolder, viewingAdminPanel, viewingComms, isAdmin]);
 
-  // NEW: FETCH MESSAGES & CLEAR UNREAD STATUS WHEN CHAT OPENS
+  // FETCH MESSAGES & CLEAR UNREAD STATUS WHEN CHAT OPENS
   useEffect(() => {
     if (activeChat) {
         fetchMessages();
@@ -174,7 +174,7 @@ export default function DistributedFileHub() {
     }
   }, [activeChat]);
 
-  // REALTIME SUPABASE LISTENER (UPDATED FOR NOTIFICATIONS)
+  // REALTIME SUPABASE LISTENER (UPDATED TO CATCH 'UPDATE' FOR READ RECEIPTS)
   useEffect(() => {
     if (!user) return;
     
@@ -193,14 +193,17 @@ export default function DistributedFileHub() {
 
         // 2. Notification Logic: If someone messaged us
         if (msg.receiver_id === user.id) {
-            // If we are actively staring at their chat, mark it read instantly
             if (activeChat?.friend_id === msg.sender_id && viewingComms) {
                 markMessagesAsRead(msg.sender_id);
             } else {
-                // Otherwise, trigger the red dot!
                 checkUnreadMessages();
             }
         }
+      })
+      // NEW: Listen for when messages are updated (like being marked as "read")
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+        const updatedMsg = payload.new;
+        setMessages((prev) => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
       })
       .subscribe();
 
@@ -338,7 +341,6 @@ export default function DistributedFileHub() {
     fetchSocialData();
   };
 
-  // NEW: NOTIFICATION HELPERS
   const checkUnreadMessages = async () => {
     if (!user) return;
     const { data, error } = await supabase
@@ -361,7 +363,7 @@ export default function DistributedFileHub() {
         .eq('receiver_id', user.id)
         .eq('sender_id', friendId)
         .eq('is_read', false);
-    checkUnreadMessages(); // Clear the dot
+    checkUnreadMessages();
   };
 
   const fetchMessages = async () => {
@@ -397,7 +399,7 @@ export default function DistributedFileHub() {
       content: newMessage.trim(),
       file_path: filePath,
       file_name: fileName,
-      is_read: false // Sets dot for the other person
+      is_read: false 
     }]);
 
     if (error) showAlert("Send Error", error.message);
@@ -596,7 +598,6 @@ export default function DistributedFileHub() {
         <nav className="flex-1 space-y-1 overflow-y-auto pr-2">
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel && !viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
           
-          {/* NEW: COMMS TAB WITH NOTIFICATION DOT */}
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
               <span>💬 Comms</span>
               {(unreadSenders.length > 0 || friendRequests.length > 0) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
@@ -728,7 +729,6 @@ export default function DistributedFileHub() {
                             <div className="flex gap-3 overflow-x-auto pb-4 border-b border-[#222] mb-4 scrollbar-hide pt-2">
                                 {friends.length === 0 ? <p className="text-xs text-[#666] italic">No established connections. Scan for nodes to connect.</p> : (
                                     friends.map(f => (
-                                        // NEW: NOTIFICATION DOT ON SPECIFIC FRIEND 
                                         <button key={f.friendship_id} onClick={() => setActiveChat(f)} className={`relative flex-shrink-0 px-4 py-2 rounded-lg border text-xs font-bold transition ${activeChat?.friendship_id === f.friendship_id ? 'bg-white text-black border-white' : 'bg-black text-[#888] border-[#333] hover:border-white hover:text-white'}`}>
                                             {f.username}
                                             {unreadSenders.includes(f.friend_id) && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-black animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
@@ -773,8 +773,15 @@ export default function DistributedFileHub() {
                                                                         <button onClick={() => handleDownload(msg.file_path, msg.file_name)} className="text-xs shrink-0 bg-black/30 hover:bg-black/50 p-1.5 rounded transition">💾 Download</button>
                                                                     </div>
                                                                 )}
-                                                                <span className={`text-[8px] opacity-60 block mt-1 ${isMine ? 'text-right' : 'text-left'}`}>
+                                                                
+                                                                {/* NEW: WHATSAPP STYLE READ RECEIPTS */}
+                                                                <span className={`text-[8px] block mt-1 flex items-center ${isMine ? 'justify-end gap-1 opacity-90' : 'justify-start opacity-60'}`}>
                                                                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                    {isMine && (
+                                                                        <span className={`text-[10px] tracking-tighter ${msg.is_read ? 'text-green-300 font-black' : 'text-white/60'}`}>
+                                                                            {msg.is_read ? '✓✓' : '✓'}
+                                                                        </span>
+                                                                    )}
                                                                 </span>
                                                             </div>
                                                         </div>
