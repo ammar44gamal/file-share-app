@@ -14,7 +14,7 @@ export default function DistributedFileHub() {
   const [filesList, setFilesList] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [folderSizes, setFolderSizes] = useState<Record<string, number>>({}); // NEW: State to hold calculated folder sizes
+  const [folderSizes, setFolderSizes] = useState<Record<string, number>>({}); 
   
   const [newFolderName, setNewFolderName] = useState('');
   const [folderIsPublic, setFolderIsPublic] = useState(true);
@@ -87,7 +87,6 @@ export default function DistributedFileHub() {
     });
   };
 
-  // NEW: Helper function to beautifully format file sizes into KB, MB, GB
   const formatBytes = (bytes: number) => {
     if (!bytes || bytes === 0) return '0 KB';
     const k = 1024;
@@ -136,7 +135,6 @@ export default function DistributedFileHub() {
     if (error) console.error("Files Fetch Error:", error.message);
     setFilesList(data || []);
 
-    // NEW: Fetch all file sizes simultaneously to build the dynamic Folder Size Badges
     let sizeQuery = supabase.from('files').select('folder_id, file_size');
     if (!isAdmin) sizeQuery = sizeQuery.or(`is_public.eq.true,user_id.eq.${user.id}`);
     
@@ -155,7 +153,16 @@ export default function DistributedFileHub() {
     if (isSignUp) {
       if (!username) return showAlert("Notice", "Please enter a Username.");
       
-      const { data, error } = await supabase.auth.signUp({ 
+      // NEW: Check if the username is taken BEFORE creating the account
+      const { data: isAvailable } = await supabase.rpc('check_username_available', { 
+          requested_username: username 
+      });
+
+      if (isAvailable === false) {
+          return showAlert("Notice", "That username is already taken. Please try another one.");
+      }
+      
+      const { error } = await supabase.auth.signUp({ 
           email, 
           password,
           options: {
@@ -400,15 +407,8 @@ export default function DistributedFileHub() {
           <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
           {folders.map(folder => (
             <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
-              <span className="truncate pr-2">📂 {folder.name}</span>
-              
-              {/* NEW: Dynamic Storage Size Badge alongside the delete button */}
-              <div className="flex items-center gap-2 shrink-0">
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-widest ${selectedFolder === folder.id ? 'bg-white/10 border-white/20 text-white' : 'bg-black border-[#333] text-[#555]'}`}>
-                      {formatBytes(folderSizes[folder.id] || 0)}
-                  </span>
-                  {(folder.user_id === user.id || isAdmin) && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer transition">✕</span>}
-              </div>
+              <span className="truncate pr-4">📂 {folder.name}</span>
+              {(folder.user_id === user.id || isAdmin) && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer">✕</span>}
             </button>
           ))}
         </nav>
@@ -512,7 +512,6 @@ export default function DistributedFileHub() {
                     </div>
                     
                     <h4 className="font-bold text-sm truncate mb-1 text-slate-200">{f.file_name}</h4>
-                    {/* FIX: Now uses formatBytes instead of hardcoded KB string */}
                     <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase mb-4"><span>{f.owner_username}</span><span>{formatBytes(f.file_size)}</span></div>
                     
                     <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
