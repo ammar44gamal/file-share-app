@@ -145,12 +145,21 @@ export default function DistributedFileHub() {
   const handleAuth = async () => {
     if (isSignUp) {
       if (!username) return showAlert("Notice", "Please enter a Username.");
-      const { data, error } = await supabase.auth.signUp({ email, password });
+      
+      // SEND USERNAME IN METADATA
+      const { data, error } = await supabase.auth.signUp({ 
+          email, 
+          password,
+          options: {
+              data: {
+                  custom_username: username // We pass it here so the DB can see it
+              }
+          }
+      });
+      
       if (error) return showAlert("Error", error.message);
-      if (data.user) {
-        // Correctly saves the chosen username
-        await supabase.from('profiles').insert([{ id: data.user.id, username: username, is_admin: false }]);
-      }
+      
+      // We DO NOT try to insert into profiles here anymore. The DB will do it.
       showAlert("Success", "Verification email sent!");
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
