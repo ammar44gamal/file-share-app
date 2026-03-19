@@ -86,7 +86,6 @@ const NetworkBackground = () => {
   );
 };
 
-
 export default function DistributedFileHub() {
   // CORE STATE
   const [user, setUser] = useState<any>(null);
@@ -113,17 +112,23 @@ export default function DistributedFileHub() {
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
-  const [viewingComms, setViewingComms] = useState(false); // NEW: Toggles the Social/Chat panel
+  const [viewingComms, setViewingComms] = useState(false);
 
-  // COMMS / SOCIAL STATE (NEW)
+  // COMMS / SOCIAL STATE
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
   const [activeChat, setActiveChat] = useState<any>(null);
+  
+  // NEW: CHAT MESSAGES STATE
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [chatFile, setChatFile] = useState<File | null>(null);
+  const chatFileInputRef = useRef<HTMLInputElement>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const [modal, setModal] = useState<{
     show: boolean, title: string, message: string, onConfirm?: (val: string) => void, onRetry?: () => void, isPrompt?: boolean
   }>({ show: false, title: '', message: '', isPrompt: false });
@@ -148,15 +153,48 @@ export default function DistributedFileHub() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. DATA SYNCHRONIZATION (Includes Comms Data)
+  // 2. DATA SYNCHRONIZATION
   useEffect(() => {
     if (user) {
       fetchFolders();
       fetchFiles();
-      fetchSocialData(); // Fetch friends and requests
+      fetchSocialData();
       if (isAdmin && viewingAdminPanel) fetchAdminStats();
     }
   }, [user, selectedFolder, viewingAdminPanel, viewingComms, isAdmin]);
+
+  // NEW: FETCH MESSAGES WHEN CHAT OPENS
+  useEffect(() => {
+    if (activeChat) fetchMessages();
+  }, [activeChat]);
+
+  // NEW: REALTIME SUPABASE LISTENER
+  useEffect(() => {
+    if (!user || !activeChat) return;
+    
+    const channel = supabase
+      .channel('realtime:messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const msg = payload.new;
+        // Only append if it belongs to the current conversation
+        if (
+          (msg.sender_id === user.id && msg.receiver_id === activeChat.friend_id) ||
+          (msg.sender_id === activeChat.friend_id && msg.receiver_id === user.id)
+        ) {
+          setMessages((prev) => [...prev, msg]);
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user, activeChat]);
+
+  // NEW: AUTO-SCROLL TO BOTTOM OF CHAT
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   // 3. UI HELPERS
   const showAlert = (title: string, message: string, retryAction?: () => void) => {
@@ -222,15 +260,13 @@ export default function DistributedFileHub() {
     }
   };
 
-  // 5. SOCIAL / COMMS LOGIC (NEW)
+  // 5. SOCIAL / COMMS LOGIC
   const fetchSocialData = async () => {
     if (!user) return;
     
-    // Safely pull all friendships involving this user
     const { data: fData, error } = await supabase.from('friendships').select('*').or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
     if (error || !fData) return;
 
-    // Get the IDs of the other people
     const otherUserIds = fData.map(f => f.requester_id === user.id ? f.receiver_id : f.requester_id);
     if (otherUserIds.length === 0) {
         setFriendRequests([]);
@@ -238,25 +274,16 @@ export default function DistributedFileHub() {
         return;
     }
 
-    // Fetch their usernames so we can display them
     const { data: profiles } = await supabase.from('profiles').select('id, username').in('id', otherUserIds);
     const profileMap = (profiles || []).reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.username }), {});
 
-    // Filter incoming pending requests
     const pending = fData.filter(f => f.status === 'pending' && f.receiver_id === user.id).map(f => ({
-        id: f.id,
-        requester_id: f.requester_id,
-        username: profileMap[f.requester_id] || 'Unknown Node'
+        id: f.id, requester_id: f.requester_id, username: profileMap[f.requester_id] || 'Unknown Node'
     }));
 
-    // Filter established connections
     const accepted = fData.filter(f => f.status === 'accepted').map(f => {
         const friendId = f.requester_id === user.id ? f.receiver_id : f.requester_id;
-        return {
-            friendship_id: f.id,
-            friend_id: friendId,
-            username: profileMap[friendId] || 'Unknown Node'
-        };
+        return { friendship_id: f.id, friend_id: friendId, username: profileMap[friendId] || 'Unknown Node' };
     });
 
     setFriendRequests(pending);
@@ -275,12 +302,7 @@ export default function DistributedFileHub() {
   };
 
   const sendFriendRequest = async (receiverId: string) => {
-    const { error } = await supabase.from('friendships').insert([{
-        requester_id: user.id,
-        receiver_id: receiverId,
-        status: 'pending'
-    }]);
-    
+    const { error } = await supabase.from('friendships').insert([{ requester_id: user.id, receiver_id: receiverId, status: 'pending' }]);
     if (error) {
         if (error.code === '23505') showAlert('Notice', 'Connection request already exists with this node.');
         else showAlert('Error', error.message);
@@ -296,6 +318,51 @@ export default function DistributedFileHub() {
     if (action === 'accept') await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id);
     else await supabase.from('friendships').delete().eq('id', id);
     fetchSocialData();
+  };
+
+  // NEW: FETCH CHAT MESSAGES
+  const fetchMessages = async () => {
+    if (!user || !activeChat) return;
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${activeChat.friend_id}),and(sender_id.eq.${activeChat.friend_id},receiver_id.eq.${user.id})`)
+      .order('created_at', { ascending: true });
+
+    if (error) console.error("Messages Fetch Error:", error.message);
+    else setMessages(data || []);
+  };
+
+  // NEW: SEND CHAT MESSAGE (Text and/or File)
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if ((!newMessage.trim() && !chatFile) || !user || !activeChat) return;
+
+    let filePath = null;
+    let fileName = null;
+
+    if (chatFile) {
+      const ext = chatFile.name.split('.').pop();
+      filePath = `chat-${Date.now()}-${Math.random().toString(36).substring(2,9)}.${ext}`;
+      fileName = chatFile.name;
+      const { error: uploadError } = await supabase.storage.from('user-files').upload(filePath, chatFile);
+      if (uploadError) return showAlert("Upload Error", uploadError.message);
+    }
+
+    const { error } = await supabase.from('messages').insert([{
+      sender_id: user.id,
+      receiver_id: activeChat.friend_id,
+      content: newMessage.trim(),
+      file_path: filePath,
+      file_name: fileName
+    }]);
+
+    if (error) showAlert("Send Error", error.message);
+    else {
+      setNewMessage('');
+      setChatFile(null);
+      if (chatFileInputRef.current) chatFileInputRef.current.value = "";
+    }
   };
 
   // 6. CORE ACTIONS
@@ -483,13 +550,10 @@ export default function DistributedFileHub() {
         </div>
         
         <nav className="flex-1 space-y-1 overflow-y-auto pr-2">
-          {/* Dashboard Tab */}
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel && !viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
           
-          {/* Comms Tab (NEW) */}
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>💬 Comms</button>
 
-          {/* Admin Tab */}
           {isAdmin && (
             <button onClick={() => {setSelectedFolder(null); setViewingComms(false); setViewingAdminPanel(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
           )}
@@ -565,15 +629,13 @@ export default function DistributedFileHub() {
         {/* MAIN BODY CONTENT */}
         <div className="p-12">
             
-            {/* VIEW LOGIC: COMMS UI (PHASE 2) */}
+            {/* VIEW LOGIC: COMMS UI & CHAT ENGINE */}
             {viewingComms ? (
                 <div className="animate-in slide-in-from-bottom-4 duration-500">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         
                         {/* LEFT COLUMN: SEARCH & REQUESTS */}
                         <div className="space-y-8">
-                            
-                            {/* SEARCH WIDGET */}
                             <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl">
                                 <h3 className="font-bold text-lg mb-4 text-white">Find Nodes</h3>
                                 <div className="flex gap-2 mb-4">
@@ -590,7 +652,6 @@ export default function DistributedFileHub() {
                                 </div>
                             </div>
 
-                            {/* INCOMING REQUESTS WIDGET */}
                             <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl">
                                 <h3 className="font-bold text-lg mb-4 text-white flex items-center justify-between">
                                     Incoming Connections 
@@ -610,14 +671,12 @@ export default function DistributedFileHub() {
                                     </div>
                                 )}
                             </div>
-
                         </div>
 
-                        {/* RIGHT COLUMN: FRIENDS LIST & ACTIVE CHAT (PREP FOR PHASE 3) */}
+                        {/* RIGHT COLUMN: FRIENDS LIST & LIVE CHAT WINDOW */}
                         <div className="lg:col-span-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl flex flex-col h-[600px]">
                             <h3 className="font-bold text-lg mb-4 text-white">Connected Nodes</h3>
                             
-                            {/* HORIZONTAL FRIENDS LIST */}
                             <div className="flex gap-3 overflow-x-auto pb-4 border-b border-[#222] mb-4 scrollbar-hide">
                                 {friends.length === 0 ? <p className="text-xs text-[#666] italic">No established connections. Scan for nodes to connect.</p> : (
                                     friends.map(f => (
@@ -628,23 +687,75 @@ export default function DistributedFileHub() {
                                 )}
                             </div>
 
-                            {/* CHAT AREA PLACEHOLDER */}
-                            <div className="flex-1 bg-black rounded-lg border border-[#222] flex items-center justify-center relative overflow-hidden">
-                                <NetworkBackground />
+                            <div className="flex-1 bg-black rounded-lg border border-[#222] flex flex-col relative overflow-hidden">
                                 {!activeChat ? (
-                                    <p className="text-[#444] text-xs font-bold uppercase tracking-widest italic z-10">Select a node to establish secure channel</p>
-                                ) : (
-                                    <div className="text-center z-10">
-                                        <p className="text-green-500 text-sm font-bold uppercase tracking-widest mb-2">Secure Channel Established</p>
-                                        <p className="text-white text-2xl font-bold mb-4">{activeChat.username}</p>
-                                        <div className="inline-block border border-[#333] bg-[#111] px-6 py-3 rounded-lg">
-                                            <p className="text-[#888] text-xs uppercase tracking-widest">Encrypted Chat Engine loading in Phase 3...</p>
-                                        </div>
+                                    <div className="flex-1 flex flex-col items-center justify-center relative">
+                                        <NetworkBackground />
+                                        <p className="text-[#444] text-xs font-bold uppercase tracking-widest italic z-10">Select a node to establish secure channel</p>
                                     </div>
+                                ) : (
+                                    <>
+                                        {/* CHAT HEADER */}
+                                        <div className="p-4 border-b border-[#222] bg-[#111] z-10 flex justify-between items-center">
+                                            <div>
+                                                <p className="text-green-500 text-[10px] font-bold uppercase tracking-widest">Secure Channel Established</p>
+                                                <p className="text-white font-bold text-sm">{activeChat.username}</p>
+                                            </div>
+                                            <button onClick={() => setActiveChat(null)} className="text-[#888] hover:text-white text-xs font-bold px-2 py-1 border border-[#333] rounded hover:bg-[#333]">✕ Close</button>
+                                        </div>
+
+                                        {/* CHAT MESSAGES */}
+                                        <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-4 z-10">
+                                            {messages.length === 0 ? (
+                                                <div className="h-full flex items-center justify-center text-[#444] text-xs font-bold uppercase tracking-widest italic">
+                                                    No messages yet. Begin transmission.
+                                                </div>
+                                            ) : (
+                                                messages.map(msg => {
+                                                    const isMine = msg.sender_id === user.id;
+                                                    return (
+                                                        <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                                                            <div className={`max-w-[70%] rounded-xl p-3 shadow-md ${isMine ? 'bg-blue-600 text-white rounded-br-none' : 'bg-[#222] text-slate-200 rounded-bl-none'}`}>
+                                                                {msg.content && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
+                                                                {msg.file_name && (
+                                                                    <div className={`mt-2 flex items-center gap-3 p-2.5 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#444]'}`}>
+                                                                        <span className="text-xs truncate font-medium">{msg.file_name}</span>
+                                                                        <button onClick={() => handleDownload(msg.file_path, msg.file_name)} className="text-xs shrink-0 bg-black/30 hover:bg-black/50 p-1.5 rounded transition">💾 Download</button>
+                                                                    </div>
+                                                                )}
+                                                                <span className={`text-[8px] opacity-60 block mt-1 ${isMine ? 'text-right' : 'text-left'}`}>
+                                                                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })
+                                            )}
+                                        </div>
+
+                                        {/* CHAT INPUT FORM */}
+                                        <form onSubmit={handleSendMessage} className="p-4 bg-[#111] border-t border-[#222] z-10 flex gap-3 items-center">
+                                            <div className="flex-1 bg-black border border-[#333] rounded-lg flex items-center pr-2 focus-within:border-white transition">
+                                                <input 
+                                                    type="text" 
+                                                    value={newMessage} 
+                                                    onChange={(e) => setNewMessage(e.target.value)} 
+                                                    placeholder="Type message..." 
+                                                    className="w-full bg-transparent text-white text-sm p-3 outline-none"
+                                                />
+                                                <input type="file" ref={chatFileInputRef} onChange={e => setChatFile(e.target.files?.[0] || null)} className="hidden" id="chat-file" />
+                                                <label htmlFor="chat-file" className={`cursor-pointer px-3 text-sm hover:text-white transition flex items-center gap-2 ${chatFile ? 'text-green-500 font-bold' : 'text-[#666]'}`} title={chatFile ? chatFile.name : "Attach file"}>
+                                                    📎 {chatFile && <span className="text-[10px] truncate max-w-[100px]">{chatFile.name}</span>}
+                                                </label>
+                                            </div>
+                                            <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-6 py-3 rounded-lg text-xs uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg">
+                                                Send
+                                            </button>
+                                        </form>
+                                    </>
                                 )}
                             </div>
                         </div>
-
                     </div>
                 </div>
 
