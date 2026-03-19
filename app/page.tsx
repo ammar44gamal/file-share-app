@@ -3,6 +3,93 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
+// NEW: High-Tech "Node Network" Canvas Animation
+const NetworkBackground = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    let animationFrameId: number;
+    let particles: { x: number, y: number, vx: number, vy: number }[] = [];
+
+    const resize = () => {
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+      initParticles();
+    };
+
+    const initParticles = () => {
+      particles = [];
+      const numParticles = Math.floor(canvas.width / 25); // Scales particle count based on screen width
+      for (let i = 0; i < numParticles; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          vx: (Math.random() - 0.5) * 0.6,
+          vy: (Math.random() - 0.5) * 0.6,
+        });
+      }
+    };
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      
+      particles.forEach((p, i) => {
+        p.x += p.vx;
+        p.y += p.vy;
+        
+        // Bounce off walls
+        if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+
+        // Draw Node
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Connect Nodes
+        for (let j = i + 1; j < particles.length; j++) {
+          const p2 = particles[j];
+          const dist = Math.hypot(p.x - p2.x, p.y - p2.y);
+          
+          if (dist < 100) {
+            ctx.beginPath();
+            ctx.strokeStyle = `rgba(255, 255, 255, ${1 - dist / 100})`;
+            ctx.lineWidth = 0.5;
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          }
+        }
+      });
+      animationFrameId = requestAnimationFrame(draw);
+    };
+    draw();
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      cancelAnimationFrame(animationFrameId);
+    };
+  }, []);
+
+  return (
+    <canvas 
+      ref={canvasRef} 
+      className="absolute inset-0 w-full h-full z-0 opacity-20 pointer-events-none fade-in duration-1000"
+      style={{ maskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)' }}
+    />
+  );
+};
+
+
 export default function DistributedFileHub() {
   const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState('');
@@ -153,7 +240,6 @@ export default function DistributedFileHub() {
     if (isSignUp) {
       if (!username) return showAlert("Notice", "Please enter a Username.");
       
-      // NEW: Check if the username is taken BEFORE creating the account
       const { data: isAvailable } = await supabase.rpc('check_username_available', { 
           requested_username: username 
       });
@@ -295,7 +381,10 @@ export default function DistributedFileHub() {
   // 7. RENDER: NOT LOGGED IN
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-black p-6">
+      <div className="flex items-center justify-center min-h-screen bg-black p-6 relative overflow-hidden">
+        {/* ADDED BACKGROUND TO LOGIN SCREEN FOR A PREMIUM FEEL */}
+        <NetworkBackground />
+        
         {modal.show && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                 <div className="bg-[#111] border border-[#333] p-8 rounded-2xl max-w-sm w-full shadow-2xl text-center">
@@ -310,17 +399,17 @@ export default function DistributedFileHub() {
                 </div>
             </div>
         )}
-        <div className="bg-[#111] border border-[#333] p-10 rounded-2xl shadow-2xl w-full max-w-sm">
+        <div className="bg-[#111]/80 backdrop-blur-xl border border-[#333] p-10 rounded-2xl shadow-2xl w-full max-w-sm z-10">
           <h2 className="text-2xl font-bold mb-8 text-center text-white tracking-tight italic">FileHub Access</h2>
           
           {isSignUp && (
-            <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setUsername(e.target.value)} />
+            <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setUsername(e.target.value)} />
           )}
           
-          <input type="email" value={email} placeholder="Email" className="w-full p-4 mb-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setEmail(e.target.value)} />
+          <input type="email" value={email} placeholder="Email" className="w-full p-4 mb-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setEmail(e.target.value)} />
           
           <div className="relative mb-8">
-            <input type={showPassword ? "text" : "password"} value={password} placeholder="Password" className="w-full p-4 bg-black border border-[#333] text-white rounded-lg focus:border-white outline-none pr-12" onChange={e => setPassword(e.target.value)} />
+            <input type={showPassword ? "text" : "password"} value={password} placeholder="Password" className="w-full p-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none pr-12" onChange={e => setPassword(e.target.value)} />
             <button onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#444] hover:text-white transition">{showPassword ? "👁️" : "👁️‍🗨️"}</button>
           </div>
           
@@ -391,13 +480,13 @@ export default function DistributedFileHub() {
         </div>
       )}
 
-      <aside className="w-64 bg-black border-r border-[#222] p-6 flex flex-col">
+      <aside className="w-64 bg-black border-r border-[#222] p-6 flex flex-col z-20 bg-black/90">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
           <h1 className="font-bold text-lg tracking-tight">FileHub</h1>
         </div>
         
-        <nav className="flex-1 space-y-1 overflow-y-auto">
+        <nav className="flex-1 space-y-1 overflow-y-auto pr-2">
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
           
           {isAdmin && (
@@ -423,8 +512,9 @@ export default function DistributedFileHub() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto p-12 relative">
+      <main className="flex-1 overflow-y-auto relative">
         
+        {/* ACCOUNT MENU */}
         <div className="absolute top-12 right-12 z-50">
           <button onClick={() => setShowAccountMenu(!showAccountMenu)} className="w-10 h-10 rounded-full border border-[#333] bg-[#111] flex items-center justify-center hover:border-white transition-all overflow-hidden shadow-lg font-bold">
               {profileName[0]?.toUpperCase()}
@@ -443,93 +533,106 @@ export default function DistributedFileHub() {
           )}
         </div>
 
-        {viewingAdminPanel ? (
-          <div className="animate-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-3xl font-bold tracking-tight text-white mb-12">Network Registry</h2>
-            <div className="bg-[#080808] border border-[#222] rounded-xl overflow-hidden shadow-2xl">
-              <table className="w-full text-left text-xs text-white">
-                <thead className="bg-[#111] text-[#444] uppercase tracking-widest font-bold border-b border-[#222]">
-                    <tr><th className="p-4">Identity</th><th className="p-4">Email Channel</th><th className="p-4">Joined</th></tr>
-                </thead>
-                <tbody className="divide-y divide-[#222]">
-                  {adminUserList.map(u => (
-                    <tr key={u.id} className="hover:bg-[#111] transition duration-300">
-                      <td className="p-4 font-bold">{u.identity_name || 'Anonymous Node'}</td>
-                      <td className="p-4 text-[#888]">{u.email_address}</td>
-                      <td className="p-4 text-[#444] italic">{new Date(u.joined_date).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : (
-          <>
-            <header className="mb-16">
-              <h2 className="text-3xl font-bold tracking-tight text-white">{currentFolder ? currentFolder.name : 'Root Explorer'}</h2>
-              {currentFolder && (
-                <div className="mt-2 flex items-center gap-4">
-                    <p className="text-[#888] text-sm italic">Owner: <span className="text-white font-bold">{currentFolder.owner_username}</span></p>
-                    {canManageFolder && (
-                        <div className="flex gap-4 border-l border-[#333] pl-4">
-                            <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_public', currentFolder.is_public)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border ${currentFolder.is_public ? 'border-green-900 text-green-500' : 'border-red-900 text-red-500'}`}>{currentFolder.is_public ? '🌐 Public' : '🔒 Private'}</button>
-                            <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_locked', currentFolder.is_locked)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border ${currentFolder.is_locked ? 'border-amber-900 text-amber-500' : 'border-[#333] text-[#888]'}`}>{currentFolder.is_locked ? '🚫 Locked' : '🔓 Unlocked'}</button>
-                        </div>
-                    )}
-                </div>
-              )}
-            </header>
-
-            {!isLockedForUser ? (
-                <section className="bg-[#111] border border-[#333] rounded-2xl p-10 mb-16 relative shadow-2xl">
-                    <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
-                    <div className="flex flex-col md:flex-row items-center gap-6">
-                        <div className="flex-1 flex items-center gap-4 w-full">
-                            <input type="file" ref={fileInputRef} onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:bg-black file:text-white cursor-pointer" />
-                            {file && <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10">CLEAR</button>}
-                        </div>
-                        <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#ccc]">{uploading ? 'Wait' : 'Distribute'}</button>
-                    </div>
-                    <div className="mt-4 flex items-center gap-2">
-                        <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333]" />
-                        <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
-                    </div>
-                </section>
-            ) : (
-                <div className="bg-amber-500/10 border border-amber-900/30 p-8 rounded-2xl mb-16 text-center">
-                    <p className="text-amber-500 text-sm font-bold uppercase tracking-widest">Node Locked by {currentFolder?.owner_username}.</p>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-              {filesList.map(f => (
-                <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all relative">
-                  <div className="absolute top-4 right-4"><span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-500'}`}>{f.is_public ? 'Public' : 'Private'}</span></div>
-                  
-                  <div className="flex flex-col h-full">
-                    <div className="flex justify-between items-start mb-4 pt-2">
-                        <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black">{f.file_name.split('.').pop()}</div>
-                    </div>
-                    
-                    <h4 className="font-bold text-sm truncate mb-1 text-slate-200">{f.file_name}</h4>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase mb-4"><span>{f.owner_username}</span><span>{formatBytes(f.file_size)}</span></div>
-                    
-                    <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
-                        <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white transition text-xs">💾</button>
-                        
-                        {(user.id === f.user_id || canManageFolder) && (
-                            <>
-                              <button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-white transition text-xs ${f.is_public ? 'text-blue-900' : 'text-amber-900'}`}>{f.is_public ? '🌐' : '🔒'}</button>
-                              <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-red-500 transition text-xs text-[#222]">🗑️</button>
-                            </>
+        {/* HEADER SECTION WITH THE NETWORK WAVE BACKGROUND */}
+        <div className="relative pt-16 px-12 pb-8 border-b border-[#222]/50 bg-gradient-to-b from-[#0a0a0a] to-black">
+            <NetworkBackground />
+            
+            <div className="relative z-10">
+                {viewingAdminPanel ? (
+                    <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Network Registry</h2>
+                ) : (
+                    <>
+                        <h2 className="text-4xl font-bold tracking-tight text-white mb-2">{currentFolder ? currentFolder.name : 'Root Explorer'}</h2>
+                        {currentFolder && (
+                            <div className="mt-4 flex items-center gap-4">
+                                <p className="text-[#888] text-sm italic">Owner: <span className="text-white font-bold">{currentFolder.owner_username}</span></p>
+                                {canManageFolder && (
+                                    <div className="flex gap-4 border-l border-[#333] pl-4">
+                                        <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_public', currentFolder.is_public)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border transition hover:opacity-80 ${currentFolder.is_public ? 'border-green-900 bg-green-500/10 text-green-500' : 'border-red-900 bg-red-500/10 text-red-500'}`}>{currentFolder.is_public ? '🌐 Public' : '🔒 Private'}</button>
+                                        <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_locked', currentFolder.is_locked)} className={`text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded border transition hover:opacity-80 ${currentFolder.is_locked ? 'border-amber-900 bg-amber-500/10 text-amber-500' : 'border-[#333] bg-[#111] text-[#888]'}`}>{currentFolder.is_locked ? '🚫 Locked' : '🔓 Unlocked'}</button>
+                                    </div>
+                                )}
+                            </div>
                         )}
-                    </div>
-                  </div>
-                </div>
-              ))}
+                    </>
+                )}
             </div>
-          </>
-        )}
+        </div>
+
+        {/* MAIN BODY CONTENT */}
+        <div className="p-12">
+            {viewingAdminPanel ? (
+            <div className="animate-in slide-in-from-bottom-4 duration-500">
+                <div className="bg-[#080808] border border-[#222] rounded-xl overflow-hidden shadow-2xl">
+                <table className="w-full text-left text-xs text-white">
+                    <thead className="bg-[#111] text-[#444] uppercase tracking-widest font-bold border-b border-[#222]">
+                        <tr><th className="p-4">Identity</th><th className="p-4">Email Channel</th><th className="p-4">Joined</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#222]">
+                    {adminUserList.map(u => (
+                        <tr key={u.id} className="hover:bg-[#111] transition duration-300">
+                        <td className="p-4 font-bold">{u.identity_name || 'Anonymous Node'}</td>
+                        <td className="p-4 text-[#888]">{u.email_address}</td>
+                        <td className="p-4 text-[#444] italic">{new Date(u.joined_date).toLocaleDateString()}</td>
+                        </tr>
+                    ))}
+                    </tbody>
+                </table>
+                </div>
+            </div>
+            ) : (
+            <>
+                {!isLockedForUser ? (
+                    <section className="bg-[#111]/80 backdrop-blur-md border border-[#333] rounded-2xl p-10 mb-16 relative shadow-2xl">
+                        <h3 className="text-xl font-bold mb-4">Deploy Assets</h3>
+                        <div className="flex flex-col md:flex-row items-center gap-6">
+                            <div className="flex-1 flex items-center gap-4 w-full">
+                                <input type="file" ref={fileInputRef} onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-6 file:py-2.5 file:px-6 file:rounded-lg file:border file:border-[#333] file:bg-black file:text-white cursor-pointer hover:file:bg-white hover:file:text-black transition file:transition" />
+                                {file && <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10">CLEAR</button>}
+                            </div>
+                            <button onClick={handleUpload} disabled={uploading || !file} className="w-full md:w-auto bg-white text-black px-10 py-3 rounded-lg font-bold text-xs uppercase tracking-widest hover:bg-[#ccc] transition disabled:opacity-50 disabled:cursor-not-allowed">{uploading ? 'Wait...' : 'Distribute'}</button>
+                        </div>
+                        <div className="mt-4 flex items-center gap-2">
+                            <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333] cursor-pointer" />
+                            <label htmlFor="pvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer hover:text-white transition">PUBLIC GROUP</label>
+                        </div>
+                    </section>
+                ) : (
+                    <div className="bg-amber-500/10 border border-amber-900/30 p-8 rounded-2xl mb-16 text-center shadow-lg">
+                        <p className="text-amber-500 text-sm font-bold uppercase tracking-widest">Node Locked by {currentFolder?.owner_username}.</p>
+                    </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                {filesList.map(f => (
+                    <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all relative shadow-lg hover:shadow-2xl">
+                    <div className="absolute top-4 right-4"><span className={`text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-900/50' : 'bg-amber-500/10 text-amber-500 border-amber-900/50'}`}>{f.is_public ? 'Public' : 'Private'}</span></div>
+                    
+                    <div className="flex flex-col h-full">
+                        <div className="flex justify-between items-start mb-4 pt-2">
+                            <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black shadow-inner">{f.file_name.split('.').pop()}</div>
+                        </div>
+                        
+                        <h4 className="font-bold text-sm truncate mb-1 text-slate-200" title={f.file_name}>{f.file_name}</h4>
+                        <div className="flex items-center justify-between text-[10px] font-bold text-[#444] uppercase mb-4"><span className="truncate pr-2">{f.owner_username}</span><span className="shrink-0 text-[#666]">{formatBytes(f.file_size)}</span></div>
+                        
+                        <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                            <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm">💾</button>
+                            
+                            {(user.id === f.user_id || canManageFolder) && (
+                                <>
+                                <button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm ${f.is_public ? 'text-blue-900 hover:bg-blue-900/20' : 'text-amber-900 hover:bg-amber-900/20'}`}>{f.is_public ? '🌐' : '🔒'}</button>
+                                <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-red-500 hover:border-red-900/50 hover:bg-red-500/10 transition text-xs text-[#444] shadow-sm">🗑️</button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    </div>
+                ))}
+                </div>
+            </>
+            )}
+        </div>
       </main>
     </div>
   );
