@@ -102,15 +102,18 @@ export default function DistributedFileHub() {
     setAdminUserList(data || []);
   };
 
+  // FIX: Added explicit error logging so it doesn't fail silently
   const fetchFolders = async () => {
     let query = supabase.from('folders').select('*').order('name');
     if (!isAdmin) {
       query = query.or(`is_public.eq.true,user_id.eq.${user.id}`);
     }
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) console.error("Folders Fetch Error:", error.message);
     setFolders(data || []);
   };
 
+  // FIX: Added explicit error logging
   const fetchFiles = async () => {
     let query = supabase.from('files').select('*').order('created_at', { ascending: false });
     if (selectedFolder) query = query.eq('folder_id', selectedFolder);
@@ -119,7 +122,8 @@ export default function DistributedFileHub() {
     if (!isAdmin) {
       query = query.or(`is_public.eq.true,user_id.eq.${user.id}`);
     }
-    const { data } = await query;
+    const { data, error } = await query;
+    if (error) console.error("Files Fetch Error:", error.message);
     setFilesList(data || []);
   };
 
@@ -132,7 +136,7 @@ export default function DistributedFileHub() {
           email, 
           password,
           options: {
-              data: { custom_username: username } // Secured custom username payload
+              data: { custom_username: username } 
           }
       });
       
@@ -256,8 +260,6 @@ export default function DistributedFileHub() {
   // 6. PERMISSIONS LOGIC
   const currentFolder = folders.find(f => f.id === selectedFolder);
   const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
-  
-  // FIX: Owners and Admins are never locked out of their own folders
   const isLockedForUser = selectedFolder && currentFolder?.is_locked && !canManageFolder;
 
   // 7. RENDER: NOT LOGGED IN
