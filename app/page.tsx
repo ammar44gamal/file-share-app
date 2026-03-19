@@ -121,14 +121,16 @@ export default function DistributedFileHub() {
   const [friends, setFriends] = useState<any[]>([]);
   const [activeChat, setActiveChat] = useState<any>(null);
   
-  // NEW: CHAT MESSAGES STATE
+  // CHAT MESSAGES & NOTIFICATIONS STATE (NEW)
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatFile, setChatFile] = useState<File | null>(null);
+  const [unreadSenders, setUnreadSenders] = useState<string[]>([]); // Tracks WHO sent you unread messages
+
   const chatFileInputRef = useRef<HTMLInputElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
-
   const fileInputRef = useRef<HTMLInputElement>(null);
+
   const [modal, setModal] = useState<{
     show: boolean, title: string, message: string, onConfirm?: (val: string) => void, onRetry?: () => void, isPrompt?: boolean
   }>({ show: false, title: '', message: '', isPrompt: false });
@@ -159,37 +161,53 @@ export default function DistributedFileHub() {
       fetchFolders();
       fetchFiles();
       fetchSocialData();
+      checkUnreadMessages(); // NEW: Check for unread dots on load
       if (isAdmin && viewingAdminPanel) fetchAdminStats();
     }
   }, [user, selectedFolder, viewingAdminPanel, viewingComms, isAdmin]);
 
-  // NEW: FETCH MESSAGES WHEN CHAT OPENS
+  // NEW: FETCH MESSAGES & CLEAR UNREAD STATUS WHEN CHAT OPENS
   useEffect(() => {
-    if (activeChat) fetchMessages();
+    if (activeChat) {
+        fetchMessages();
+        markMessagesAsRead(activeChat.friend_id);
+    }
   }, [activeChat]);
 
-  // NEW: REALTIME SUPABASE LISTENER
+  // REALTIME SUPABASE LISTENER (UPDATED FOR NOTIFICATIONS)
   useEffect(() => {
-    if (!user || !activeChat) return;
+    if (!user) return;
     
     const channel = supabase
       .channel('realtime:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         const msg = payload.new;
-        // Only append if it belongs to the current conversation
-        if (
+        
+        // 1. If we have the chat open, append it immediately
+        if (activeChat && (
           (msg.sender_id === user.id && msg.receiver_id === activeChat.friend_id) ||
           (msg.sender_id === activeChat.friend_id && msg.receiver_id === user.id)
-        ) {
+        )) {
           setMessages((prev) => [...prev, msg]);
+        }
+
+        // 2. Notification Logic: If someone messaged us
+        if (msg.receiver_id === user.id) {
+            // If we are actively staring at their chat, mark it read instantly
+            if (activeChat?.friend_id === msg.sender_id && viewingComms) {
+                markMessagesAsRead(msg.sender_id);
+            } else {
+                // Otherwise, trigger the red dot!
+                checkUnreadMessages();
+            }
         }
       })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [user, activeChat]);
+  }, [user, activeChat, viewingComms]);
 
-  // NEW: AUTO-SCROLL TO BOTTOM OF CHAT
+  // AUTO-SCROLL TO BOTTOM OF CHAT
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
@@ -320,7 +338,32 @@ export default function DistributedFileHub() {
     fetchSocialData();
   };
 
-  // NEW: FETCH CHAT MESSAGES
+  // NEW: NOTIFICATION HELPERS
+  const checkUnreadMessages = async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+        .from('messages')
+        .select('sender_id')
+        .eq('receiver_id', user.id)
+        .eq('is_read', false);
+
+    if (!error && data) {
+        const senders = Array.from(new Set(data.map(m => m.sender_id)));
+        setUnreadSenders(senders);
+    }
+  };
+
+  const markMessagesAsRead = async (friendId: string) => {
+    if (!user) return;
+    await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('receiver_id', user.id)
+        .eq('sender_id', friendId)
+        .eq('is_read', false);
+    checkUnreadMessages(); // Clear the dot
+  };
+
   const fetchMessages = async () => {
     if (!user || !activeChat) return;
     const { data, error } = await supabase
@@ -333,7 +376,6 @@ export default function DistributedFileHub() {
     else setMessages(data || []);
   };
 
-  // NEW: SEND CHAT MESSAGE (Text and/or File)
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if ((!newMessage.trim() && !chatFile) || !user || !activeChat) return;
@@ -354,7 +396,8 @@ export default function DistributedFileHub() {
       receiver_id: activeChat.friend_id,
       content: newMessage.trim(),
       file_path: filePath,
-      file_name: fileName
+      file_name: fileName,
+      is_read: false // Sets dot for the other person
     }]);
 
     if (error) showAlert("Send Error", error.message);
@@ -508,7 +551,8 @@ export default function DistributedFileHub() {
           </div>
           <button onClick={handleAuth} className="w-full bg-white text-black py-4 rounded-lg font-bold hover:bg-[#ccc] transition uppercase tracking-widest text-xs">{isSignUp ? 'Sign Up' : 'Log In'}</button>
           {!isSignUp && <p onClick={handleForgotPassword} className="text-center mt-4 text-[10px] text-[#444] hover:text-white cursor-pointer transition uppercase tracking-widest font-bold">Forgot Password?</p>}
-          <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white transition">{isSignUp ? 'Back to Login' : 'Create Account'}</p>
+          <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white transition">{isSignUp ? 'Back to Login' : 'Create Account'}
+          </p>
         </div>
       </div>
     );
@@ -552,7 +596,11 @@ export default function DistributedFileHub() {
         <nav className="flex-1 space-y-1 overflow-y-auto pr-2">
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel && !viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
           
-          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>💬 Comms</button>
+          {/* NEW: COMMS TAB WITH NOTIFICATION DOT */}
+          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
+              <span>💬 Comms</span>
+              {(unreadSenders.length > 0 || friendRequests.length > 0) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
+          </button>
 
           {isAdmin && (
             <button onClick={() => {setSelectedFolder(null); setViewingComms(false); setViewingAdminPanel(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
@@ -677,11 +725,13 @@ export default function DistributedFileHub() {
                         <div className="lg:col-span-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl flex flex-col h-[600px]">
                             <h3 className="font-bold text-lg mb-4 text-white">Connected Nodes</h3>
                             
-                            <div className="flex gap-3 overflow-x-auto pb-4 border-b border-[#222] mb-4 scrollbar-hide">
+                            <div className="flex gap-3 overflow-x-auto pb-4 border-b border-[#222] mb-4 scrollbar-hide pt-2">
                                 {friends.length === 0 ? <p className="text-xs text-[#666] italic">No established connections. Scan for nodes to connect.</p> : (
                                     friends.map(f => (
-                                        <button key={f.friendship_id} onClick={() => setActiveChat(f)} className={`flex-shrink-0 px-4 py-2 rounded-lg border text-xs font-bold transition ${activeChat?.friendship_id === f.friendship_id ? 'bg-white text-black border-white' : 'bg-black text-[#888] border-[#333] hover:border-white hover:text-white'}`}>
+                                        // NEW: NOTIFICATION DOT ON SPECIFIC FRIEND 
+                                        <button key={f.friendship_id} onClick={() => setActiveChat(f)} className={`relative flex-shrink-0 px-4 py-2 rounded-lg border text-xs font-bold transition ${activeChat?.friendship_id === f.friendship_id ? 'bg-white text-black border-white' : 'bg-black text-[#888] border-[#333] hover:border-white hover:text-white'}`}>
                                             {f.username}
+                                            {unreadSenders.includes(f.friend_id) && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-black animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
                                         </button>
                                     ))
                                 )}
