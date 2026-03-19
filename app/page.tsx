@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
-// NEW: High-Tech "Node Network" Canvas Animation
+// High-Tech "Node Network" Canvas Animation
 const NetworkBackground = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -24,7 +24,7 @@ const NetworkBackground = () => {
 
     const initParticles = () => {
       particles = [];
-      const numParticles = Math.floor(canvas.width / 25); // Scales particle count based on screen width
+      const numParticles = Math.floor(canvas.width / 25);
       for (let i = 0; i < numParticles; i++) {
         particles.push({
           x: Math.random() * canvas.width,
@@ -46,16 +46,13 @@ const NetworkBackground = () => {
         p.x += p.vx;
         p.y += p.vy;
         
-        // Bounce off walls
         if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
         if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
 
-        // Draw Node
         ctx.beginPath();
         ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
         ctx.fill();
 
-        // Connect Nodes
         for (let j = i + 1; j < particles.length; j++) {
           const p2 = particles[j];
           const dist = Math.hypot(p.x - p2.x, p.y - p2.y);
@@ -91,45 +88,48 @@ const NetworkBackground = () => {
 
 
 export default function DistributedFileHub() {
+  // CORE STATE
   const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [username, setUsername] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
   const [showPassword, setShowPassword] = useState(false); 
+  const [profileName, setProfileName] = useState('User');
+  const [isAdmin, setIsAdmin] = useState(false);
   
+  // FILE/FOLDER STATE
   const [filesList, setFilesList] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [folderSizes, setFolderSizes] = useState<Record<string, number>>({}); 
-  
   const [newFolderName, setNewFolderName] = useState('');
   const [folderIsPublic, setFolderIsPublic] = useState(true);
   const [file, setFile] = useState<File | null>(null);
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
 
-  const [profileName, setProfileName] = useState('User');
-  const [isAdmin, setIsAdmin] = useState(false);
+  // NAVIGATION & UI STATE
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
+  const [viewingComms, setViewingComms] = useState(false); // NEW: Toggles the Social/Chat panel
+
+  // COMMS / SOCIAL STATE (NEW)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [friendRequests, setFriendRequests] = useState<any[]>([]);
+  const [friends, setFriends] = useState<any[]>([]);
+  const [activeChat, setActiveChat] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [modal, setModal] = useState<{
-    show: boolean, 
-    title: string, 
-    message: string, 
-    onConfirm?: (val: string) => void, 
-    onRetry?: () => void,
-    isPrompt?: boolean
-  }>({
-    show: false, title: '', message: '', isPrompt: false
-  });
+    show: boolean, title: string, message: string, onConfirm?: (val: string) => void, onRetry?: () => void, isPrompt?: boolean
+  }>({ show: false, title: '', message: '', isPrompt: false });
   const [modalInput, setModalInput] = useState('');
 
-  // 1. SESSION & AUTH LISTENER
+  // 1. SESSION INITIALIZATION
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -142,21 +142,21 @@ export default function DistributedFileHub() {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) fetchProfile(currentUser);
-      
       if (event === 'PASSWORD_RECOVERY') handleChangePassword();
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. DATA SYNCHRONIZATION
+  // 2. DATA SYNCHRONIZATION (Includes Comms Data)
   useEffect(() => {
     if (user) {
       fetchFolders();
       fetchFiles();
+      fetchSocialData(); // Fetch friends and requests
       if (isAdmin && viewingAdminPanel) fetchAdminStats();
     }
-  }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
+  }, [user, selectedFolder, viewingAdminPanel, viewingComms, isAdmin]);
 
   // 3. UI HELPERS
   const showAlert = (title: string, message: string, retryAction?: () => void) => {
@@ -165,13 +165,7 @@ export default function DistributedFileHub() {
 
   const showPrompt = (title: string, message: string, onConfirm: (val: string) => void) => {
     setModalInput('');
-    setModal({ 
-        show: true, 
-        title, 
-        message, 
-        isPrompt: true, 
-        onConfirm: (val: string) => onConfirm(val) 
-    });
+    setModal({ show: true, title, message, isPrompt: true, onConfirm: (val: string) => onConfirm(val) });
   };
 
   const formatBytes = (bytes: number) => {
@@ -189,7 +183,6 @@ export default function DistributedFileHub() {
 
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
     const status = !!(data?.is_admin || isMasterEmail);
-    
     setIsAdmin(status);
     if (data?.username) setProfileName(data.username); 
     else setProfileName(currentUser.email.split('@')[0]);
@@ -202,11 +195,8 @@ export default function DistributedFileHub() {
 
   const fetchFolders = async () => {
     let query = supabase.from('folders').select('*').order('name');
-    if (!isAdmin) {
-      query = query.or(`is_public.eq.true,user_id.eq.${user.id}`);
-    }
-    const { data, error } = await query;
-    if (error) console.error("Folders Fetch Error:", error.message);
+    if (!isAdmin) query = query.or(`is_public.eq.true,user_id.eq.${user.id}`);
+    const { data } = await query;
     setFolders(data || []);
   };
 
@@ -214,18 +204,15 @@ export default function DistributedFileHub() {
     let query = supabase.from('files').select('*').order('created_at', { ascending: false });
     if (selectedFolder) query = query.eq('folder_id', selectedFolder);
     else query = query.is('folder_id', null);
-
-    if (!isAdmin) {
-      query = query.or(`is_public.eq.true,user_id.eq.${user.id}`);
-    }
-    const { data, error } = await query;
-    if (error) console.error("Files Fetch Error:", error.message);
+    if (!isAdmin) query = query.or(`is_public.eq.true,user_id.eq.${user.id}`);
+    
+    const { data } = await query;
     setFilesList(data || []);
 
     let sizeQuery = supabase.from('files').select('folder_id, file_size');
     if (!isAdmin) sizeQuery = sizeQuery.or(`is_public.eq.true,user_id.eq.${user.id}`);
-    
     const { data: sizeData } = await sizeQuery;
+    
     if (sizeData) {
         const sizes: Record<string, number> = {};
         sizeData.forEach(f => {
@@ -235,27 +222,90 @@ export default function DistributedFileHub() {
     }
   };
 
-  // 5. CORE ACTIONS
+  // 5. SOCIAL / COMMS LOGIC (NEW)
+  const fetchSocialData = async () => {
+    if (!user) return;
+    
+    // Safely pull all friendships involving this user
+    const { data: fData, error } = await supabase.from('friendships').select('*').or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
+    if (error || !fData) return;
+
+    // Get the IDs of the other people
+    const otherUserIds = fData.map(f => f.requester_id === user.id ? f.receiver_id : f.requester_id);
+    if (otherUserIds.length === 0) {
+        setFriendRequests([]);
+        setFriends([]);
+        return;
+    }
+
+    // Fetch their usernames so we can display them
+    const { data: profiles } = await supabase.from('profiles').select('id, username').in('id', otherUserIds);
+    const profileMap = (profiles || []).reduce((acc: any, p: any) => ({ ...acc, [p.id]: p.username }), {});
+
+    // Filter incoming pending requests
+    const pending = fData.filter(f => f.status === 'pending' && f.receiver_id === user.id).map(f => ({
+        id: f.id,
+        requester_id: f.requester_id,
+        username: profileMap[f.requester_id] || 'Unknown Node'
+    }));
+
+    // Filter established connections
+    const accepted = fData.filter(f => f.status === 'accepted').map(f => {
+        const friendId = f.requester_id === user.id ? f.receiver_id : f.requester_id;
+        return {
+            friendship_id: f.id,
+            friend_id: friendId,
+            username: profileMap[friendId] || 'Unknown Node'
+        };
+    });
+
+    setFriendRequests(pending);
+    setFriends(accepted);
+  };
+
+  const handleSearchUsers = async () => {
+    if (!searchQuery.trim()) return;
+    const { data, error } = await supabase.from('profiles')
+        .select('id, username')
+        .ilike('username', `%${searchQuery}%`)
+        .neq('id', user.id)
+        .limit(10);
+    if (error) showAlert('Error', error.message);
+    else setSearchResults(data || []);
+  };
+
+  const sendFriendRequest = async (receiverId: string) => {
+    const { error } = await supabase.from('friendships').insert([{
+        requester_id: user.id,
+        receiver_id: receiverId,
+        status: 'pending'
+    }]);
+    
+    if (error) {
+        if (error.code === '23505') showAlert('Notice', 'Connection request already exists with this node.');
+        else showAlert('Error', error.message);
+    } else {
+        showAlert('Success', 'Connection request transmitted.');
+        setSearchResults([]);
+        setSearchQuery('');
+        fetchSocialData();
+    }
+  };
+
+  const handleRequestAction = async (id: string, action: 'accept' | 'decline') => {
+    if (action === 'accept') await supabase.from('friendships').update({ status: 'accepted' }).eq('id', id);
+    else await supabase.from('friendships').delete().eq('id', id);
+    fetchSocialData();
+  };
+
+  // 6. CORE ACTIONS
   const handleAuth = async () => {
     if (isSignUp) {
       if (!username) return showAlert("Notice", "Please enter a Username.");
+      const { data: isAvailable } = await supabase.rpc('check_username_available', { requested_username: username });
+      if (isAvailable === false) return showAlert("Notice", "That username is already taken. Please try another one.");
       
-      const { data: isAvailable } = await supabase.rpc('check_username_available', { 
-          requested_username: username 
-      });
-
-      if (isAvailable === false) {
-          return showAlert("Notice", "That username is already taken. Please try another one.");
-      }
-      
-      const { error } = await supabase.auth.signUp({ 
-          email, 
-          password,
-          options: {
-              data: { custom_username: username } 
-          }
-      });
-      
+      const { error } = await supabase.auth.signUp({ email, password, options: { data: { custom_username: username } } });
       if (error) return showAlert("Error", error.message);
       showAlert("Success", "Verification email sent! Check your inbox.");
     } else {
@@ -266,9 +316,7 @@ export default function DistributedFileHub() {
 
   const handleForgotPassword = async () => {
     if (!email) return showAlert("Notice", "Please enter your email address first.");
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: window.location.origin,
-    });
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
     if (error) showAlert("Error", error.message);
     else showAlert("Success", "Recovery link sent to your email!");
   };
@@ -293,12 +341,8 @@ export default function DistributedFileHub() {
     const { error } = await supabase.from('folders').insert([{ 
         name: newFolderName, user_id: user.id, is_public: folderIsPublic, owner_username: profileName
     }]);
-    
     if (error) showAlert("Database Error", error.message);
-    else { 
-        setNewFolderName(''); 
-        fetchFolders(); 
-    }
+    else { setNewFolderName(''); fetchFolders(); }
   };
 
   const handleUpload = async () => {
@@ -315,7 +359,6 @@ export default function DistributedFileHub() {
       }]);
 
       if (error) showAlert("Database Error", error.message);
-      
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = ""; 
       fetchFiles();
@@ -334,28 +377,18 @@ export default function DistributedFileHub() {
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
     showPrompt("Delete Folder", "Type 'DELETE' to confirm.", async (val) => {
-        if(val.trim().toUpperCase() !== 'DELETE') {
-            showAlert("Error", "Validation failed. Type 'DELETE'.", () => handleFolderDelete(e, folderId));
-            return;
-        }
+        if(val.trim().toUpperCase() !== 'DELETE') return showAlert("Error", "Validation failed. Type 'DELETE'.", () => handleFolderDelete(e, folderId));
         const { error } = await supabase.from('folders').delete().eq('id', folderId);
         if (error) showAlert("Database Error", error.message);
-        else {
-            if (selectedFolder === folderId) setSelectedFolder(null);
-            fetchFolders();
-        }
+        else { if (selectedFolder === folderId) setSelectedFolder(null); fetchFolders(); }
     });
   };
 
   const handleDeleteFile = async (id: string, path: string) => {
     showPrompt("Delete File", "Type 'CONFIRM' to wipe this file.", async (val) => {
-        if (val.trim().toUpperCase() !== 'CONFIRM') {
-            showAlert("Error", "Validation failed. Type 'CONFIRM'.", () => handleDeleteFile(id, path));
-            return;
-        }
+        if (val.trim().toUpperCase() !== 'CONFIRM') return showAlert("Error", "Validation failed. Type 'CONFIRM'.", () => handleDeleteFile(id, path));
         await supabase.storage.from('user-files').remove([path]);
         const { error } = await supabase.from('files').delete().eq('id', id);
-        
         if (error) showAlert("Database Error", error.message);
         else fetchFiles();
     });
@@ -373,16 +406,15 @@ export default function DistributedFileHub() {
     else fetchFiles();
   };
 
-  // 6. PERMISSIONS LOGIC
+  // 7. PERMISSIONS LOGIC
   const currentFolder = folders.find(f => f.id === selectedFolder);
   const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
   const isLockedForUser = selectedFolder && currentFolder?.is_locked && !canManageFolder;
 
-  // 7. RENDER: NOT LOGGED IN
+  // 8. RENDER: NOT LOGGED IN
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black p-6 relative overflow-hidden">
-        {/* ADDED BACKGROUND TO LOGIN SCREEN FOR A PREMIUM FEEL */}
         <NetworkBackground />
         
         {modal.show && (
@@ -401,37 +433,21 @@ export default function DistributedFileHub() {
         )}
         <div className="bg-[#111]/80 backdrop-blur-xl border border-[#333] p-10 rounded-2xl shadow-2xl w-full max-w-sm z-10">
           <h2 className="text-2xl font-bold mb-8 text-center text-white tracking-tight italic">FileHub Access</h2>
-          
-          {isSignUp && (
-            <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setUsername(e.target.value)} />
-          )}
-          
+          {isSignUp && <input type="text" placeholder="Username" className="w-full p-4 mb-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setUsername(e.target.value)} />}
           <input type="email" value={email} placeholder="Email" className="w-full p-4 mb-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none" onChange={e => setEmail(e.target.value)} />
-          
           <div className="relative mb-8">
             <input type={showPassword ? "text" : "password"} value={password} placeholder="Password" className="w-full p-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none pr-12" onChange={e => setPassword(e.target.value)} />
             <button onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#444] hover:text-white transition">{showPassword ? "👁️" : "👁️‍🗨️"}</button>
           </div>
-          
-          <button onClick={handleAuth} className="w-full bg-white text-black py-4 rounded-lg font-bold hover:bg-[#ccc] transition uppercase tracking-widest text-xs">
-            {isSignUp ? 'Sign Up' : 'Log In'}
-          </button>
-          
-          {!isSignUp && (
-            <p onClick={handleForgotPassword} className="text-center mt-4 text-[10px] text-[#444] hover:text-white cursor-pointer transition uppercase tracking-widest font-bold">
-              Forgot Password?
-            </p>
-          )}
-
-          <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white transition">
-            {isSignUp ? 'Back to Login' : 'Create Account'}
-          </p>
+          <button onClick={handleAuth} className="w-full bg-white text-black py-4 rounded-lg font-bold hover:bg-[#ccc] transition uppercase tracking-widest text-xs">{isSignUp ? 'Sign Up' : 'Log In'}</button>
+          {!isSignUp && <p onClick={handleForgotPassword} className="text-center mt-4 text-[10px] text-[#444] hover:text-white cursor-pointer transition uppercase tracking-widest font-bold">Forgot Password?</p>}
+          <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white transition">{isSignUp ? 'Back to Login' : 'Create Account'}</p>
         </div>
       </div>
     );
   }
 
-  // 8. RENDER: MAIN DASHBOARD
+  // 9. RENDER: MAIN DASHBOARD
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
       
@@ -440,46 +456,26 @@ export default function DistributedFileHub() {
             <div className="bg-[#111] border border-[#333] p-8 rounded-2xl max-w-sm w-full shadow-2xl">
                 <h3 className="text-xl font-bold mb-4 tracking-tight italic">{modal.title}</h3>
                 <p className="text-sm text-[#888] mb-6 leading-relaxed">{modal.message}</p>
-                
                 {modal.isPrompt && (
                   <div className="relative mb-6">
-                    <input 
-                        autoFocus 
-                        type={modal.title === "Security Update" && !showPassword ? "password" : "text"} 
-                        value={modalInput} 
-                        onChange={(e) => setModalInput(e.target.value)} 
-                        className="w-full p-3 bg-black border border-[#333] rounded-lg text-white outline-none focus:border-white pr-10" 
-                    />
-                    {modal.title === "Security Update" && (
-                        <button onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#444] text-xs">
-                            {showPassword ? "👁️" : "👁️‍🗨️"}
-                        </button>
-                    )}
+                    <input autoFocus type={modal.title === "Security Update" && !showPassword ? "password" : "text"} value={modalInput} onChange={(e) => setModalInput(e.target.value)} className="w-full p-3 bg-black border border-[#333] rounded-lg text-white outline-none focus:border-white pr-10" />
+                    {modal.title === "Security Update" && <button onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#444] text-xs">{showPassword ? "👁️" : "👁️‍🗨️"}</button>}
                   </div>
                 )}
-
                 <div className="flex gap-4">
                     <button onClick={() => {
-                        const retryAction = modal.onRetry;
-                        const confirmAction = modal.onConfirm;
-                        const currentInput = modalInput;
-                        
+                        const retryAction = modal.onRetry; const confirmAction = modal.onConfirm; const currentInput = modalInput;
                         setModal({ ...modal, show: false });
-                        
-                        if ((modal.title.includes("Error") || modal.title === "Database Error") && retryAction) {
-                            setTimeout(() => retryAction(), 100);
-                        } else if (modal.isPrompt && confirmAction) {
-                            confirmAction(currentInput);
-                        }
-                    }} className={`flex-1 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${modal.title.includes("Error") ? "bg-red-600 text-white" : "bg-white text-black"}`}>
-                        {modal.title.includes("Error") ? "Try Again" : "Confirm"}
-                    </button>
+                        if ((modal.title.includes("Error") || modal.title === "Database Error") && retryAction) setTimeout(() => retryAction(), 100);
+                        else if (modal.isPrompt && confirmAction) confirmAction(currentInput);
+                    }} className={`flex-1 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${modal.title.includes("Error") ? "bg-red-600 text-white" : "bg-white text-black"}`}>{modal.title.includes("Error") ? "Try Again" : "Confirm"}</button>
                     <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 border border-[#333] py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest text-[#444] hover:text-white">Cancel</button>
                 </div>
             </div>
         </div>
       )}
 
+      {/* SIDEBAR */}
       <aside className="w-64 bg-black border-r border-[#222] p-6 flex flex-col z-20 bg-black/90">
         <div className="flex items-center gap-3 mb-12">
           <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
@@ -487,15 +483,20 @@ export default function DistributedFileHub() {
         </div>
         
         <nav className="flex-1 space-y-1 overflow-y-auto pr-2">
-          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
+          {/* Dashboard Tab */}
+          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel && !viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
           
+          {/* Comms Tab (NEW) */}
+          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>💬 Comms</button>
+
+          {/* Admin Tab */}
           {isAdmin && (
-            <button onClick={() => setViewingAdminPanel(true)} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
+            <button onClick={() => {setSelectedFolder(null); setViewingComms(false); setViewingAdminPanel(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
           )}
           
           <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
           {folders.map(folder => (
-            <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
+            <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id && !viewingComms && !viewingAdminPanel ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
               <span className="truncate pr-4">📂 {folder.name}</span>
               {(folder.user_id === user.id || isAdmin) && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer">✕</span>}
             </button>
@@ -538,7 +539,9 @@ export default function DistributedFileHub() {
             <NetworkBackground />
             
             <div className="relative z-10">
-                {viewingAdminPanel ? (
+                {viewingComms ? (
+                    <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Secure Comms Link</h2>
+                ) : viewingAdminPanel ? (
                     <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Network Registry</h2>
                 ) : (
                     <>
@@ -561,7 +564,92 @@ export default function DistributedFileHub() {
 
         {/* MAIN BODY CONTENT */}
         <div className="p-12">
-            {viewingAdminPanel ? (
+            
+            {/* VIEW LOGIC: COMMS UI (PHASE 2) */}
+            {viewingComms ? (
+                <div className="animate-in slide-in-from-bottom-4 duration-500">
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                        
+                        {/* LEFT COLUMN: SEARCH & REQUESTS */}
+                        <div className="space-y-8">
+                            
+                            {/* SEARCH WIDGET */}
+                            <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl">
+                                <h3 className="font-bold text-lg mb-4 text-white">Find Nodes</h3>
+                                <div className="flex gap-2 mb-4">
+                                    <input type="text" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Enter exact username..." className="flex-1 bg-black border border-[#333] text-white text-xs p-3 rounded-lg focus:border-white outline-none"/>
+                                    <button onClick={handleSearchUsers} className="bg-white text-black font-bold text-[10px] px-4 rounded-lg uppercase tracking-widest hover:bg-[#ccc] transition">Scan</button>
+                                </div>
+                                <div className="space-y-2">
+                                    {searchResults.map(r => (
+                                        <div key={r.id} className="flex items-center justify-between bg-black p-3 rounded border border-[#222]">
+                                            <span className="text-xs font-bold text-slate-200">{r.username}</span>
+                                            <button onClick={() => sendFriendRequest(r.id)} className="text-[10px] font-bold text-blue-500 border border-blue-900/50 bg-blue-500/10 px-3 py-1.5 rounded hover:bg-blue-500/20 uppercase tracking-widest transition">Connect</button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* INCOMING REQUESTS WIDGET */}
+                            <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl">
+                                <h3 className="font-bold text-lg mb-4 text-white flex items-center justify-between">
+                                    Incoming Connections 
+                                    {friendRequests.length > 0 && <span className="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full">{friendRequests.length}</span>}
+                                </h3>
+                                {friendRequests.length === 0 ? <p className="text-xs text-[#666] italic">No pending requests.</p> : (
+                                    <div className="space-y-2">
+                                        {friendRequests.map(req => (
+                                            <div key={req.id} className="flex items-center justify-between bg-black p-3 rounded border border-[#222]">
+                                                <span className="text-xs font-bold text-slate-200">{req.username}</span>
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => handleRequestAction(req.id, 'accept')} className="text-[10px] font-bold text-green-500 hover:text-green-400 uppercase tracking-widest transition">Accept</button>
+                                                    <button onClick={() => handleRequestAction(req.id, 'decline')} className="text-[10px] font-bold text-red-500 hover:text-red-400 uppercase tracking-widest transition">Reject</button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                        </div>
+
+                        {/* RIGHT COLUMN: FRIENDS LIST & ACTIVE CHAT (PREP FOR PHASE 3) */}
+                        <div className="lg:col-span-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl flex flex-col h-[600px]">
+                            <h3 className="font-bold text-lg mb-4 text-white">Connected Nodes</h3>
+                            
+                            {/* HORIZONTAL FRIENDS LIST */}
+                            <div className="flex gap-3 overflow-x-auto pb-4 border-b border-[#222] mb-4 scrollbar-hide">
+                                {friends.length === 0 ? <p className="text-xs text-[#666] italic">No established connections. Scan for nodes to connect.</p> : (
+                                    friends.map(f => (
+                                        <button key={f.friendship_id} onClick={() => setActiveChat(f)} className={`flex-shrink-0 px-4 py-2 rounded-lg border text-xs font-bold transition ${activeChat?.friendship_id === f.friendship_id ? 'bg-white text-black border-white' : 'bg-black text-[#888] border-[#333] hover:border-white hover:text-white'}`}>
+                                            {f.username}
+                                        </button>
+                                    ))
+                                )}
+                            </div>
+
+                            {/* CHAT AREA PLACEHOLDER */}
+                            <div className="flex-1 bg-black rounded-lg border border-[#222] flex items-center justify-center relative overflow-hidden">
+                                <NetworkBackground />
+                                {!activeChat ? (
+                                    <p className="text-[#444] text-xs font-bold uppercase tracking-widest italic z-10">Select a node to establish secure channel</p>
+                                ) : (
+                                    <div className="text-center z-10">
+                                        <p className="text-green-500 text-sm font-bold uppercase tracking-widest mb-2">Secure Channel Established</p>
+                                        <p className="text-white text-2xl font-bold mb-4">{activeChat.username}</p>
+                                        <div className="inline-block border border-[#333] bg-[#111] px-6 py-3 rounded-lg">
+                                            <p className="text-[#888] text-xs uppercase tracking-widest">Encrypted Chat Engine loading in Phase 3...</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+            // VIEW LOGIC: ADMIN PANEL
+            ) : viewingAdminPanel ? (
             <div className="animate-in slide-in-from-bottom-4 duration-500">
                 <div className="bg-[#080808] border border-[#222] rounded-xl overflow-hidden shadow-2xl">
                 <table className="w-full text-left text-xs text-white">
@@ -580,6 +668,8 @@ export default function DistributedFileHub() {
                 </table>
                 </div>
             </div>
+            
+            // VIEW LOGIC: FILE EXPLORER
             ) : (
             <>
                 {!isLockedForUser ? (
