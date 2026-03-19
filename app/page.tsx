@@ -14,6 +14,7 @@ export default function DistributedFileHub() {
   const [filesList, setFilesList] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [folderSizes, setFolderSizes] = useState<Record<string, number>>({}); // NEW: State to hold calculated folder sizes
   
   const [newFolderName, setNewFolderName] = useState('');
   const [folderIsPublic, setFolderIsPublic] = useState(true);
@@ -41,6 +42,7 @@ export default function DistributedFileHub() {
   });
   const [modalInput, setModalInput] = useState('');
 
+  // 1. SESSION & AUTH LISTENER
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -60,6 +62,7 @@ export default function DistributedFileHub() {
     return () => subscription.unsubscribe();
   }, []);
 
+  // 2. DATA SYNCHRONIZATION
   useEffect(() => {
     if (user) {
       fetchFolders();
@@ -68,6 +71,7 @@ export default function DistributedFileHub() {
     }
   }, [user, selectedFolder, viewingAdminPanel, isAdmin]);
 
+  // 3. UI HELPERS
   const showAlert = (title: string, message: string, retryAction?: () => void) => {
     setModal({ show: true, title, message, isPrompt: false, onRetry: retryAction });
   };
@@ -83,10 +87,18 @@ export default function DistributedFileHub() {
     });
   };
 
-  // FIX: Added error catcher so we know if RLS blocks the profile fetch again
+  // NEW: Helper function to beautifully format file sizes into KB, MB, GB
+  const formatBytes = (bytes: number) => {
+    if (!bytes || bytes === 0) return '0 KB';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  // 4. DATA FETCHING
   const fetchProfile = async (currentUser: any) => {
     const { data, error } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
-    
     if (error) console.error("Profile Fetch Error:", error.message);
 
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
@@ -123,8 +135,22 @@ export default function DistributedFileHub() {
     const { data, error } = await query;
     if (error) console.error("Files Fetch Error:", error.message);
     setFilesList(data || []);
+
+    // NEW: Fetch all file sizes simultaneously to build the dynamic Folder Size Badges
+    let sizeQuery = supabase.from('files').select('folder_id, file_size');
+    if (!isAdmin) sizeQuery = sizeQuery.or(`is_public.eq.true,user_id.eq.${user.id}`);
+    
+    const { data: sizeData } = await sizeQuery;
+    if (sizeData) {
+        const sizes: Record<string, number> = {};
+        sizeData.forEach(f => {
+            if (f.folder_id) sizes[f.folder_id] = (sizes[f.folder_id] || 0) + (f.file_size || 0);
+        });
+        setFolderSizes(sizes);
+    }
   };
 
+  // 5. CORE ACTIONS
   const handleAuth = async () => {
     if (isSignUp) {
       if (!username) return showAlert("Notice", "Please enter a Username.");
@@ -254,10 +280,12 @@ export default function DistributedFileHub() {
     else fetchFiles();
   };
 
+  // 6. PERMISSIONS LOGIC
   const currentFolder = folders.find(f => f.id === selectedFolder);
   const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
   const isLockedForUser = selectedFolder && currentFolder?.is_locked && !canManageFolder;
 
+  // 7. RENDER: NOT LOGGED IN
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-black p-6">
@@ -307,6 +335,7 @@ export default function DistributedFileHub() {
     );
   }
 
+  // 8. RENDER: MAIN DASHBOARD
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black">
       
@@ -371,8 +400,15 @@ export default function DistributedFileHub() {
           <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
           {folders.map(folder => (
             <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
-              <span className="truncate pr-4">📂 {folder.name}</span>
-              {(folder.user_id === user.id || isAdmin) && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer">✕</span>}
+              <span className="truncate pr-2">📂 {folder.name}</span>
+              
+              {/* NEW: Dynamic Storage Size Badge alongside the delete button */}
+              <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-widest ${selectedFolder === folder.id ? 'bg-white/10 border-white/20 text-white' : 'bg-black border-[#333] text-[#555]'}`}>
+                      {formatBytes(folderSizes[folder.id] || 0)}
+                  </span>
+                  {(folder.user_id === user.id || isAdmin) && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer transition">✕</span>}
+              </div>
             </button>
           ))}
         </nav>
@@ -476,7 +512,8 @@ export default function DistributedFileHub() {
                     </div>
                     
                     <h4 className="font-bold text-sm truncate mb-1 text-slate-200">{f.file_name}</h4>
-                    <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase mb-4"><span>{f.owner_username}</span><span>{(f.file_size/1024).toFixed(1)} KB</span></div>
+                    {/* FIX: Now uses formatBytes instead of hardcoded KB string */}
+                    <div className="flex items-center justify-between text-[10px] font-bold text-[#333] uppercase mb-4"><span>{f.owner_username}</span><span>{formatBytes(f.file_size)}</span></div>
                     
                     <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
                         <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white transition text-xs">💾</button>
