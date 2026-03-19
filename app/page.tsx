@@ -323,7 +323,6 @@ export default function DistributedFileHub() {
                 
                 {modal.isPrompt && (
                   <div className="relative mb-6">
-                    {/* FIX: Only hides text if it is a password prompt. Never hides 'DELETE' */}
                     <input 
                         autoFocus 
                         type={modal.title === "Security Update" && !showPassword ? "password" : "text"} 
