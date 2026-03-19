@@ -86,6 +86,34 @@ const NetworkBackground = () => {
   );
 };
 
+// Smart Image Preview Component
+const FileThumbnail = ({ path, fileName, isChat = false }: { path: string, fileName: string, isChat?: boolean }) => {
+    const [url, setUrl] = useState<string | null>(null);
+    const isImage = fileName.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+    
+    useEffect(() => {
+        if (isImage) {
+            supabase.storage.from('user-files').createSignedUrl(path, 3600).then(({ data }) => {
+                if (data?.signedUrl) setUrl(data.signedUrl);
+            });
+        }
+    }, [path, isImage]);
+
+    if (!isImage) {
+        return (
+            <div className={`bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic shadow-inner ${isChat ? 'p-4 w-full text-left' : 'w-12 h-12'}`}>
+                {fileName.split('.').pop()}
+            </div>
+        );
+    }
+    
+    return url ? (
+        <img src={url} alt={fileName} className={`object-cover rounded-lg border border-[#222] ${isChat ? 'max-w-full h-auto max-h-48' : 'w-12 h-12'}`} />
+    ) : (
+        <div className={`animate-pulse bg-[#222] rounded-lg ${isChat ? 'w-48 h-32' : 'w-12 h-12'}`}></div>
+    );
+};
+
 export default function DistributedFileHub() {
   // CORE STATE
   const [user, setUser] = useState<any>(null);
@@ -126,6 +154,10 @@ export default function DistributedFileHub() {
   const [newMessage, setNewMessage] = useState('');
   const [chatFile, setChatFile] = useState<File | null>(null);
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
+  
+  // TYPING INDICATOR STATE
+  const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const chatFileInputRef = useRef<HTMLInputElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -166,7 +198,6 @@ export default function DistributedFileHub() {
     }
   }, [user, selectedFolder, viewingAdminPanel, viewingComms, isAdmin]);
 
-  // FETCH MESSAGES & CLEAR UNREAD STATUS WHEN CHAT OPENS
   useEffect(() => {
     if (activeChat) {
         fetchMessages();
@@ -174,48 +205,54 @@ export default function DistributedFileHub() {
     }
   }, [activeChat]);
 
-  // REALTIME SUPABASE LISTENER (UPDATED TO CATCH 'UPDATE' FOR READ RECEIPTS)
+  // REALTIME SUPABASE LISTENER (WITHOUT DELETE LISTENER)
   useEffect(() => {
     if (!user) return;
     
-    const channel = supabase
+    // 1. Message Database Listener (Insert, Update)
+    const dbChannel = supabase
       .channel('realtime:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
         const msg = payload.new;
-        
-        // 1. If we have the chat open, append it immediately
-        if (activeChat && (
-          (msg.sender_id === user.id && msg.receiver_id === activeChat.friend_id) ||
-          (msg.sender_id === activeChat.friend_id && msg.receiver_id === user.id)
-        )) {
+        if (activeChat && ((msg.sender_id === user.id && msg.receiver_id === activeChat.friend_id) || (msg.sender_id === activeChat.friend_id && msg.receiver_id === user.id))) {
           setMessages((prev) => [...prev, msg]);
         }
-
-        // 2. Notification Logic: If someone messaged us
         if (msg.receiver_id === user.id) {
-            if (activeChat?.friend_id === msg.sender_id && viewingComms) {
-                markMessagesAsRead(msg.sender_id);
-            } else {
-                checkUnreadMessages();
-            }
+            if (activeChat?.friend_id === msg.sender_id && viewingComms) markMessagesAsRead(msg.sender_id);
+            else checkUnreadMessages();
         }
       })
-      // NEW: Listen for when messages are updated (like being marked as "read")
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
-        const updatedMsg = payload.new;
-        setMessages((prev) => prev.map(m => m.id === updatedMsg.id ? updatedMsg : m));
+        setMessages((prev) => prev.map(m => m.id === payload.new.id ? payload.new : m));
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => { supabase.removeChannel(dbChannel); };
   }, [user, activeChat, viewingComms]);
 
-  // AUTO-SCROLL TO BOTTOM OF CHAT
+  // 2. Typing Indicator Broadcast Listener
+  useEffect(() => {
+    if (!user || !activeChat) return;
+    const roomName = `chat-${[user.id, activeChat.friend_id].sort().join('-')}`;
+    
+    const typingChannel = supabase.channel(roomName)
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        if (payload.payload.sender_id === activeChat.friend_id) {
+            setIsTyping(true);
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 2000);
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(typingChannel); };
+  }, [user, activeChat]);
+
   useEffect(() => {
     if (chatScrollRef.current) {
       chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, isTyping]);
 
   // 3. UI HELPERS
   const showAlert = (title: string, message: string, retryAction?: () => void) => {
@@ -239,7 +276,6 @@ export default function DistributedFileHub() {
   const fetchProfile = async (currentUser: any) => {
     const { data, error } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
     if (error) console.error("Profile Fetch Error:", error.message);
-
     const isMasterEmail = currentUser?.email === 'ammargamal44s@gmail.com';
     const status = !!(data?.is_admin || isMasterEmail);
     setIsAdmin(status);
@@ -284,15 +320,12 @@ export default function DistributedFileHub() {
   // 5. SOCIAL / COMMS LOGIC
   const fetchSocialData = async () => {
     if (!user) return;
-    
     const { data: fData, error } = await supabase.from('friendships').select('*').or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
     if (error || !fData) return;
 
     const otherUserIds = fData.map(f => f.requester_id === user.id ? f.receiver_id : f.requester_id);
     if (otherUserIds.length === 0) {
-        setFriendRequests([]);
-        setFriends([]);
-        return;
+        setFriendRequests([]); setFriends([]); return;
     }
 
     const { data: profiles } = await supabase.from('profiles').select('id, username').in('id', otherUserIds);
@@ -313,11 +346,7 @@ export default function DistributedFileHub() {
 
   const handleSearchUsers = async () => {
     if (!searchQuery.trim()) return;
-    const { data, error } = await supabase.from('profiles')
-        .select('id, username')
-        .ilike('username', `%${searchQuery}%`)
-        .neq('id', user.id)
-        .limit(10);
+    const { data, error } = await supabase.from('profiles').select('id, username').ilike('username', `%${searchQuery}%`).neq('id', user.id).limit(10);
     if (error) showAlert('Error', error.message);
     else setSearchResults(data || []);
   };
@@ -329,9 +358,7 @@ export default function DistributedFileHub() {
         else showAlert('Error', error.message);
     } else {
         showAlert('Success', 'Connection request transmitted.');
-        setSearchResults([]);
-        setSearchQuery('');
-        fetchSocialData();
+        setSearchResults([]); setSearchQuery(''); fetchSocialData();
     }
   };
 
@@ -343,12 +370,7 @@ export default function DistributedFileHub() {
 
   const checkUnreadMessages = async () => {
     if (!user) return;
-    const { data, error } = await supabase
-        .from('messages')
-        .select('sender_id')
-        .eq('receiver_id', user.id)
-        .eq('is_read', false);
-
+    const { data, error } = await supabase.from('messages').select('sender_id').eq('receiver_id', user.id).eq('is_read', false);
     if (!error && data) {
         const senders = Array.from(new Set(data.map(m => m.sender_id)));
         setUnreadSenders(senders);
@@ -357,25 +379,26 @@ export default function DistributedFileHub() {
 
   const markMessagesAsRead = async (friendId: string) => {
     if (!user) return;
-    await supabase
-        .from('messages')
-        .update({ is_read: true })
-        .eq('receiver_id', user.id)
-        .eq('sender_id', friendId)
-        .eq('is_read', false);
+    await supabase.from('messages').update({ is_read: true }).eq('receiver_id', user.id).eq('sender_id', friendId).eq('is_read', false);
     checkUnreadMessages();
   };
 
   const fetchMessages = async () => {
     if (!user || !activeChat) return;
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${activeChat.friend_id}),and(sender_id.eq.${activeChat.friend_id},receiver_id.eq.${user.id})`)
-      .order('created_at', { ascending: true });
-
+    const { data, error } = await supabase.from('messages').select('*').or(`and(sender_id.eq.${user.id},receiver_id.eq.${activeChat.friend_id}),and(sender_id.eq.${activeChat.friend_id},receiver_id.eq.${user.id})`).order('created_at', { ascending: true });
     if (error) console.error("Messages Fetch Error:", error.message);
     else setMessages(data || []);
+  };
+
+  // HANDLE TYPING EVENT & SEND MESSAGE
+  const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewMessage(e.target.value);
+    if (user && activeChat) {
+        const roomName = `chat-${[user.id, activeChat.friend_id].sort().join('-')}`;
+        supabase.channel(roomName).send({
+            type: 'broadcast', event: 'typing', payload: { sender_id: user.id }
+        });
+    }
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -394,18 +417,12 @@ export default function DistributedFileHub() {
     }
 
     const { error } = await supabase.from('messages').insert([{
-      sender_id: user.id,
-      receiver_id: activeChat.friend_id,
-      content: newMessage.trim(),
-      file_path: filePath,
-      file_name: fileName,
-      is_read: false 
+      sender_id: user.id, receiver_id: activeChat.friend_id, content: newMessage.trim(), file_path: filePath, file_name: fileName, is_read: false 
     }]);
 
     if (error) showAlert("Send Error", error.message);
     else {
-      setNewMessage('');
-      setChatFile(null);
+      setNewMessage(''); setChatFile(null);
       if (chatFileInputRef.current) chatFileInputRef.current.value = "";
     }
   };
@@ -767,14 +784,18 @@ export default function DistributedFileHub() {
                                                         <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                                                             <div className={`max-w-[70%] rounded-xl p-3 shadow-md ${isMine ? 'bg-blue-600 text-white rounded-br-none' : 'bg-[#222] text-slate-200 rounded-bl-none'}`}>
                                                                 {msg.content && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
+                                                                
+                                                                {/* SMART IMAGE PREVIEW IN CHAT */}
                                                                 {msg.file_name && (
-                                                                    <div className={`mt-2 flex items-center gap-3 p-2.5 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#444]'}`}>
-                                                                        <span className="text-xs truncate font-medium">{msg.file_name}</span>
-                                                                        <button onClick={() => handleDownload(msg.file_path, msg.file_name)} className="text-xs shrink-0 bg-black/30 hover:bg-black/50 p-1.5 rounded transition">💾 Download</button>
+                                                                    <div className={`mt-2 flex flex-col gap-2 p-2 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#444]'}`}>
+                                                                        <FileThumbnail path={msg.file_path} fileName={msg.file_name} isChat={true} />
+                                                                        <div className="flex items-center justify-between gap-3 px-1">
+                                                                            <span className="text-[10px] truncate max-w-[120px] font-medium opacity-80">{msg.file_name}</span>
+                                                                            <button onClick={() => handleDownload(msg.file_path, msg.file_name)} className="text-[10px] font-bold shrink-0 bg-black/30 hover:bg-black/50 px-2 py-1 rounded transition">💾 Save</button>
+                                                                        </div>
                                                                     </div>
                                                                 )}
                                                                 
-                                                                {/* NEW: WHATSAPP STYLE READ RECEIPTS */}
                                                                 <span className={`text-[8px] block mt-1 flex items-center ${isMine ? 'justify-end gap-1 opacity-90' : 'justify-start opacity-60'}`}>
                                                                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                     {isMine && (
@@ -788,6 +809,14 @@ export default function DistributedFileHub() {
                                                     )
                                                 })
                                             )}
+                                            {/* TYPING INDICATOR */}
+                                            {isTyping && (
+                                                <div className="flex justify-start">
+                                                    <div className="bg-[#222] text-[#888] text-[10px] font-bold uppercase tracking-widest px-4 py-2 rounded-xl rounded-bl-none animate-pulse">
+                                                        {activeChat.username} is typing...
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* CHAT INPUT FORM */}
@@ -796,7 +825,7 @@ export default function DistributedFileHub() {
                                                 <input 
                                                     type="text" 
                                                     value={newMessage} 
-                                                    onChange={(e) => setNewMessage(e.target.value)} 
+                                                    onChange={handleTyping} // Wired up to the typing broadcaster
                                                     placeholder="Type message..." 
                                                     className="w-full bg-transparent text-white text-sm p-3 outline-none"
                                                 />
@@ -868,10 +897,11 @@ export default function DistributedFileHub() {
                     
                     <div className="flex flex-col h-full">
                         <div className="flex justify-between items-start mb-4 pt-2">
-                            <div className="w-12 h-12 bg-[#111] border border-[#222] rounded-lg flex items-center justify-center text-white font-bold text-[10px] uppercase italic transition-all group-hover:bg-white group-hover:text-black shadow-inner">{f.file_name.split('.').pop()}</div>
+                            {/* SMART IMAGE PREVIEW IN THE GRID */}
+                            <FileThumbnail path={f.storage_path} fileName={f.file_name} />
                         </div>
                         
-                        <h4 className="font-bold text-sm truncate mb-1 text-slate-200" title={f.file_name}>{f.file_name}</h4>
+                        <h4 className="font-bold text-sm truncate mb-1 text-slate-200 mt-2" title={f.file_name}>{f.file_name}</h4>
                         <div className="flex items-center justify-between text-[10px] font-bold text-[#444] uppercase mb-4"><span className="truncate pr-2">{f.owner_username}</span><span className="shrink-0 text-[#666]">{formatBytes(f.file_size)}</span></div>
                         
                         <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
