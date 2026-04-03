@@ -114,6 +114,22 @@ const FileThumbnail = ({ path, fileName, isChat = false }: { path: string, fileN
     );
 };
 
+// NEW: Smart Voice Note Player Component
+const AudioPlayer = ({ path }: { path: string }) => {
+    const [url, setUrl] = useState<string | null>(null);
+    
+    useEffect(() => {
+        supabase.storage.from('user-files').createSignedUrl(path, 3600).then(({ data }) => {
+            if (data?.signedUrl) setUrl(data.signedUrl);
+        });
+    }, [path]);
+
+    if (!url) return <div className="animate-pulse bg-[#222] h-10 w-48 rounded-lg"></div>;
+    
+    // A CSS filter to make the default HTML audio player look dark-mode friendly
+    return <audio controls src={url} className="h-10 w-full max-w-[250px] outline-none rounded" style={{ filter: 'invert(0.9) hue-rotate(180deg)' }} />;
+};
+
 export default function DistributedFileHub() {
   // CORE STATE
   const [user, setUser] = useState<any>(null);
@@ -158,6 +174,11 @@ export default function DistributedFileHub() {
   // TYPING INDICATOR STATE
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // NEW: VOICE RECORDING STATE
+  const [isRecording, setIsRecording] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const chatFileInputRef = useRef<HTMLInputElement>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
@@ -205,11 +226,10 @@ export default function DistributedFileHub() {
     }
   }, [activeChat]);
 
-  // REALTIME SUPABASE LISTENER (WITHOUT DELETE LISTENER)
+  // REALTIME SUPABASE LISTENER
   useEffect(() => {
     if (!user) return;
     
-    // 1. Message Database Listener (Insert, Update)
     const dbChannel = supabase
       .channel('realtime:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
@@ -230,7 +250,7 @@ export default function DistributedFileHub() {
     return () => { supabase.removeChannel(dbChannel); };
   }, [user, activeChat, viewingComms]);
 
-  // 2. Typing Indicator Broadcast Listener
+  // Typing Indicator Broadcast Listener
   useEffect(() => {
     if (!user || !activeChat) return;
     const roomName = `chat-${[user.id, activeChat.friend_id].sort().join('-')}`;
@@ -390,7 +410,7 @@ export default function DistributedFileHub() {
     else setMessages(data || []);
   };
 
-  // HANDLE TYPING EVENT & SEND MESSAGE
+  // HANDLE TYPING EVENT
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNewMessage(e.target.value);
     if (user && activeChat) {
@@ -399,6 +419,61 @@ export default function DistributedFileHub() {
             type: 'broadcast', event: 'typing', payload: { sender_id: user.id }
         });
     }
+  };
+
+  // NEW: VOICE NOTE RECORDING LOGIC
+  const startRecording = async () => {
+      try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          const mediaRecorder = new MediaRecorder(stream);
+          mediaRecorderRef.current = mediaRecorder;
+          audioChunksRef.current = [];
+
+          mediaRecorder.ondataavailable = (e) => {
+              if (e.data.size > 0) audioChunksRef.current.push(e.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+              if (audioChunksRef.current.length === 0) return;
+              
+              const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+              const audioFile = new File([audioBlob], `Voice Note.webm`, { type: 'audio/webm' });
+              
+              const filePath = `chat-audio-${Date.now()}-${Math.random().toString(36).substring(2,9)}.webm`;
+              const { error: uploadError } = await supabase.storage.from('user-files').upload(filePath, audioFile);
+              
+              if (!uploadError && user && activeChat) {
+                  await supabase.from('messages').insert([{
+                      sender_id: user.id, receiver_id: activeChat.friend_id, content: '', file_path: filePath, file_name: 'Voice Note.webm', is_read: false 
+                  }]);
+              }
+              
+              stream.getTracks().forEach(track => track.stop()); // Free microphone
+          };
+
+          mediaRecorder.start();
+          setIsRecording(true);
+      } catch (err) {
+          showAlert("Microphone Error", "Could not access microphone. Please allow permissions.");
+      }
+  };
+
+  const stopRecordingAndSend = () => {
+      if (mediaRecorderRef.current && isRecording) {
+          mediaRecorderRef.current.stop();
+          setIsRecording(false);
+      }
+  };
+
+  const cancelRecording = () => {
+      if (mediaRecorderRef.current && isRecording) {
+          mediaRecorderRef.current.onstop = () => {
+               const stream = mediaRecorderRef.current?.stream;
+               stream?.getTracks().forEach(track => track.stop());
+          };
+          mediaRecorderRef.current.stop();
+          setIsRecording(false);
+      }
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -780,19 +855,29 @@ export default function DistributedFileHub() {
                                             ) : (
                                                 messages.map(msg => {
                                                     const isMine = msg.sender_id === user.id;
+                                                    // Determine if it's a Voice Note based on the file name we assign when recording
+                                                    const isVoiceNote = msg.file_name === 'Voice Note.webm';
+                                                    
                                                     return (
                                                         <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                                                             <div className={`max-w-[70%] rounded-xl p-3 shadow-md ${isMine ? 'bg-blue-600 text-white rounded-br-none' : 'bg-[#222] text-slate-200 rounded-bl-none'}`}>
                                                                 {msg.content && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
                                                                 
-                                                                {/* SMART IMAGE PREVIEW IN CHAT */}
+                                                                {/* SMART FILE/AUDIO RENDERER */}
                                                                 {msg.file_name && (
                                                                     <div className={`mt-2 flex flex-col gap-2 p-2 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#444]'}`}>
-                                                                        <FileThumbnail path={msg.file_path} fileName={msg.file_name} isChat={true} />
-                                                                        <div className="flex items-center justify-between gap-3 px-1">
-                                                                            <span className="text-[10px] truncate max-w-[120px] font-medium opacity-80">{msg.file_name}</span>
-                                                                            <button onClick={() => handleDownload(msg.file_path, msg.file_name)} className="text-[10px] font-bold shrink-0 bg-black/30 hover:bg-black/50 px-2 py-1 rounded transition">💾 Save</button>
-                                                                        </div>
+                                                                        {isVoiceNote ? (
+                                                                            <AudioPlayer path={msg.file_path} />
+                                                                        ) : (
+                                                                            <FileThumbnail path={msg.file_path} fileName={msg.file_name} isChat={true} />
+                                                                        )}
+                                                                        
+                                                                        {!isVoiceNote && (
+                                                                            <div className="flex items-center justify-between gap-3 px-1">
+                                                                                <span className="text-[10px] truncate max-w-[120px] font-medium opacity-80">{msg.file_name}</span>
+                                                                                <button onClick={() => handleDownload(msg.file_path, msg.file_name)} className="text-[10px] font-bold shrink-0 bg-black/30 hover:bg-black/50 px-2 py-1 rounded transition">💾 Save</button>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                                 
@@ -822,22 +907,45 @@ export default function DistributedFileHub() {
 
                                         {/* CHAT INPUT FORM */}
                                         <form onSubmit={handleSendMessage} className="p-4 bg-[#111] border-t border-[#222] z-10 flex gap-3 items-center">
-                                            <div className="flex-1 bg-black border border-[#333] rounded-lg flex items-center pr-2 focus-within:border-white transition">
-                                                <input 
-                                                    type="text" 
-                                                    value={newMessage} 
-                                                    onChange={handleTyping} // Wired up to the typing broadcaster
-                                                    placeholder="Type message..." 
-                                                    className="w-full bg-transparent text-white text-sm p-3 outline-none"
-                                                />
-                                                <input type="file" ref={chatFileInputRef} onChange={e => setChatFile(e.target.files?.[0] || null)} className="hidden" id="chat-file" />
-                                                <label htmlFor="chat-file" className={`cursor-pointer px-3 text-sm hover:text-white transition flex items-center gap-2 ${chatFile ? 'text-green-500 font-bold' : 'text-[#666]'}`} title={chatFile ? chatFile.name : "Attach file"}>
-                                                    📎 {chatFile && <span className="text-[10px] truncate max-w-[100px]">{chatFile.name}</span>}
-                                                </label>
-                                            </div>
-                                            <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-6 py-3 rounded-lg text-xs uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg">
-                                                Send
-                                            </button>
+                                            
+                                            {isRecording ? (
+                                                <div className="flex-1 bg-red-900/20 border border-red-500/50 rounded-lg flex items-center justify-between p-3 transition">
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
+                                                        <span className="text-red-500 text-sm font-bold tracking-widest uppercase">Recording...</span>
+                                                    </div>
+                                                    <button type="button" onClick={cancelRecording} className="text-red-400 hover:text-red-300 text-xs font-bold uppercase tracking-widest transition">Cancel ✕</button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex-1 bg-black border border-[#333] rounded-lg flex items-center pr-2 focus-within:border-white transition">
+                                                    <input 
+                                                        type="text" 
+                                                        value={newMessage} 
+                                                        onChange={handleTyping}
+                                                        placeholder="Type message..." 
+                                                        className="w-full bg-transparent text-white text-sm p-3 outline-none"
+                                                    />
+                                                    <input type="file" ref={chatFileInputRef} onChange={e => setChatFile(e.target.files?.[0] || null)} className="hidden" id="chat-file" />
+                                                    <label htmlFor="chat-file" className={`cursor-pointer px-3 text-sm hover:text-white transition flex items-center gap-2 ${chatFile ? 'text-green-500 font-bold' : 'text-[#666]'}`} title={chatFile ? chatFile.name : "Attach file"}>
+                                                        📎 {chatFile && <span className="text-[10px] truncate max-w-[100px]">{chatFile.name}</span>}
+                                                    </label>
+                                                </div>
+                                            )}
+
+                                            {isRecording ? (
+                                                <button type="button" onClick={stopRecordingAndSend} className="bg-red-600 text-white font-bold px-6 py-3 rounded-lg text-xs uppercase tracking-widest hover:bg-red-500 transition shadow-lg">
+                                                    Send Audio
+                                                </button>
+                                            ) : (
+                                                <>
+                                                    <button type="button" onClick={startRecording} className="bg-[#222] text-white hover:bg-[#333] p-3 rounded-lg transition" title="Voice Note">
+                                                        🎤
+                                                    </button>
+                                                    <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-6 py-3 rounded-lg text-xs uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg">
+                                                        Send
+                                                    </button>
+                                                </>
+                                            )}
                                         </form>
                                     </>
                                 )}
@@ -898,7 +1006,6 @@ export default function DistributedFileHub() {
                     
                     <div className="flex flex-col h-full">
                         <div className="flex justify-between items-start mb-4 pt-2">
-                            {/* SMART IMAGE PREVIEW IN THE GRID */}
                             <FileThumbnail path={f.storage_path} fileName={f.file_name} />
                         </div>
                         
