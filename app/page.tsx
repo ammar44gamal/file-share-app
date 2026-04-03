@@ -796,11 +796,12 @@ export default function DistributedFileHub() {
                                                                     </div>
                                                                 )}
                                                                 
+                                                                {/* WHATSAPP STYLE READ RECEIPTS */}
                                                                 <span className={`text-[8px] block mt-1 flex items-center ${isMine ? 'justify-end gap-1 opacity-90' : 'justify-start opacity-60'}`}>
                                                                     {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                                     {isMine && (
-                                                                        <span className={`text-[10px] tracking-tighter ${msg.is_read ? 'text-green-300 font-black' : 'text-white/60'}`}>
-                                                                            {msg.is_read ? '✓✓' : '✓'}
+                                                                        <span className={`text-[10px] tracking-tighter ${msg.is_read ? 'text-cyan-300 font-black' : 'text-white/60'}`}>
+                                                                            ✓✓
                                                                         </span>
                                                                     )}
                                                                 </span>
