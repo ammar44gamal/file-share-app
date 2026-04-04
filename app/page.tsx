@@ -777,12 +777,12 @@ export default function DistributedFileHub() {
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel && !viewingComms && !viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
           
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingSearch(false); setViewingComms(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
-              <span>💬 Comms</span>
+              <span>💬 Chats</span>
               {(unreadSenders.length > 0 || friendRequests.length > 0) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
           </button>
           
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
-              <span>🌐 Global Network</span>
+              <span>🌐 Global Search</span>
           </button>
 
           {isAdmin && (
@@ -835,9 +835,9 @@ export default function DistributedFileHub() {
             
             <div className="relative z-10">
                 {viewingSearch ? (
-                    <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Global Network Search</h2>
+                    <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Global File Search</h2>
                 ) : viewingComms ? (
-                    <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Secure Comms Link</h2>
+                    <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Secure Connections Log</h2>
                 ) : viewingAdminPanel ? (
                     <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Network Registry</h2>
                 ) : (
@@ -910,7 +910,7 @@ export default function DistributedFileHub() {
                         {/* LEFT COLUMN: SEARCH & REQUESTS */}
                         <div className="space-y-8">
                             <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl">
-                                <h3 className="font-bold text-lg mb-4 text-white">Find Nodes</h3>
+                                <h3 className="font-bold text-lg mb-4 text-white">Find Friends</h3>
                                 <div className="flex gap-2 mb-4">
                                     <input type="text" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Enter exact username..." className="flex-1 bg-black border border-[#333] text-white text-xs p-3 rounded-lg focus:border-white outline-none"/>
                                     <button onClick={handleSearchUsers} className="bg-white text-black font-bold text-[10px] px-4 rounded-lg uppercase tracking-widest hover:bg-[#ccc] transition">Scan</button>
@@ -948,7 +948,7 @@ export default function DistributedFileHub() {
 
                         {/* RIGHT COLUMN: FRIENDS LIST & LIVE CHAT WINDOW */}
                         <div className="lg:col-span-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl flex flex-col h-[600px]">
-                            <h3 className="font-bold text-lg mb-4 text-white">Connected Nodes</h3>
+                            <h3 className="font-bold text-lg mb-4 text-white">Connected Friends</h3>
                             
                             <div className="flex gap-3 overflow-x-auto pb-4 border-b border-[#222] mb-4 scrollbar-hide pt-2">
                                 {friends.length === 0 ? <p className="text-xs text-[#666] italic">No established connections. Scan for nodes to connect.</p> : (
