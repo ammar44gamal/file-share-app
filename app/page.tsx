@@ -114,7 +114,7 @@ const FileThumbnail = ({ path, fileName, isChat = false }: { path: string, fileN
     );
 };
 
-// NEW: CUSTOM SLEEK VOICE NOTE PLAYER
+// CUSTOM SLEEK VOICE NOTE PLAYER
 const VoiceNotePlayer = ({ path, isMine }: { path: string, isMine: boolean }) => {
     const [url, setUrl] = useState<string | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -139,9 +139,6 @@ const VoiceNotePlayer = ({ path, isMine }: { path: string, isMine: boolean }) =>
         if (audioRef.current) {
             const current = audioRef.current.currentTime;
             const total = audioRef.current.duration;
-            
-            // WebM recordings from browsers sometimes don't save total duration metadata instantly.
-            // If we have the total, fill the bar normally. If not, slowly cycle the bar for visual feedback.
             if (!isNaN(total) && total !== Infinity) {
                 setProgress((current / total) * 100);
             } else {
@@ -171,7 +168,6 @@ const VoiceNotePlayer = ({ path, isMine }: { path: string, isMine: boolean }) =>
                 onClick={togglePlay} 
                 className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center transition shadow-md ${isMine ? 'bg-white text-blue-600 hover:bg-gray-200' : 'bg-[#444] text-white hover:bg-[#555]'}`}
             >
-                {/* Simple CSS triangles/squares for Play/Pause */}
                 {isPlaying ? (
                     <div className="flex gap-0.5">
                         <div className="w-1 h-3 bg-current rounded-sm"></div>
@@ -182,7 +178,6 @@ const VoiceNotePlayer = ({ path, isMine }: { path: string, isMine: boolean }) =>
                 )}
             </button>
             
-            {/* Custom Progress Bar */}
             <div className={`flex-1 h-1.5 rounded-full overflow-hidden relative ${isMine ? 'bg-blue-800' : 'bg-[#111]'}`}>
                 <div 
                     className={`absolute top-0 left-0 h-full transition-all duration-100 ease-linear ${isMine ? 'bg-white' : 'bg-cyan-400'}`}
@@ -190,7 +185,6 @@ const VoiceNotePlayer = ({ path, isMine }: { path: string, isMine: boolean }) =>
                 />
             </div>
             
-            {/* Fake pulsing waveform */}
             <div className={`flex gap-[2px] items-center h-4 ${isMine ? 'text-white' : 'text-[#888]'}`}>
                 <div className={`w-[2px] bg-current rounded-full transition-all ${isPlaying ? 'h-full animate-pulse' : 'h-1/2'}`}></div>
                 <div className={`w-[2px] bg-current rounded-full transition-all ${isPlaying ? 'h-3/4 animate-pulse delay-75' : 'h-1'}`}></div>
@@ -227,6 +221,11 @@ export default function DistributedFileHub() {
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
   const [viewingComms, setViewingComms] = useState(false);
+  const [viewingSearch, setViewingSearch] = useState(false); // NEW: Global Search State
+
+  // GLOBAL SEARCH STATE (NEW)
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
 
   // COMMS / SOCIAL STATE
   const [searchQuery, setSearchQuery] = useState('');
@@ -287,7 +286,7 @@ export default function DistributedFileHub() {
       checkUnreadMessages();
       if (isAdmin && viewingAdminPanel) fetchAdminStats();
     }
-  }, [user, selectedFolder, viewingAdminPanel, viewingComms, isAdmin]);
+  }, [user, selectedFolder, viewingAdminPanel, viewingComms, viewingSearch, isAdmin]);
 
   useEffect(() => {
     if (activeChat) {
@@ -405,6 +404,26 @@ export default function DistributedFileHub() {
         });
         setFolderSizes(sizes);
     }
+  };
+
+  // NEW: GLOBAL SEARCH LOGIC
+  const performGlobalSearch = async (q: string) => {
+      setGlobalSearchQuery(q);
+      if (!q.trim()) {
+          setGlobalSearchResults([]);
+          return;
+      }
+      
+      // EXPLICITLY FILTER FOR is_public = true
+      const { data, error } = await supabase
+          .from('files')
+          .select('*')
+          .eq('is_public', true)
+          .ilike('file_name', `%${q}%`)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+      if (!error && data) setGlobalSearchResults(data);
   };
 
   // 5. SOCIAL / COMMS LOGIC
@@ -758,20 +777,25 @@ export default function DistributedFileHub() {
         </div>
         
         <nav className="flex-1 space-y-1 overflow-y-auto pr-2">
-          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel && !viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
+          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel && !viewingComms && !viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
           
-          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
+          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingSearch(false); setViewingComms(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
               <span>💬 Comms</span>
               {(unreadSenders.length > 0 || friendRequests.length > 0) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
           </button>
+          
+          {/* NEW: GLOBAL SEARCH TAB */}
+          <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
+              <span>🌐 Global Network</span>
+          </button>
 
           {isAdmin && (
-            <button onClick={() => {setSelectedFolder(null); setViewingComms(false); setViewingAdminPanel(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
+            <button onClick={() => {setSelectedFolder(null); setViewingComms(false); setViewingSearch(false); setViewingAdminPanel(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
           )}
           
           <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
           {folders.map(folder => (
-            <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id && !viewingComms && !viewingAdminPanel ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
+            <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
               <span className="truncate pr-4">📂 {folder.name}</span>
               {(folder.user_id === user.id || isAdmin) && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer">✕</span>}
             </button>
@@ -814,7 +838,9 @@ export default function DistributedFileHub() {
             <NetworkBackground />
             
             <div className="relative z-10">
-                {viewingComms ? (
+                {viewingSearch ? (
+                    <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Global Network Search</h2>
+                ) : viewingComms ? (
                     <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Secure Comms Link</h2>
                 ) : viewingAdminPanel ? (
                     <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Network Registry</h2>
@@ -840,8 +866,55 @@ export default function DistributedFileHub() {
         {/* MAIN BODY CONTENT */}
         <div className="p-12">
             
-            {/* VIEW LOGIC: COMMS UI & CHAT ENGINE */}
-            {viewingComms ? (
+            {/* VIEW LOGIC: GLOBAL SEARCH (NEW) */}
+            {viewingSearch ? (
+                <div className="animate-in slide-in-from-bottom-4 duration-500">
+                    <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl mb-8 flex gap-4">
+                        <input 
+                            type="text" 
+                            value={globalSearchQuery} 
+                            onChange={(e) => performGlobalSearch(e.target.value)} 
+                            placeholder="Search public network for files (e.g., .pdf, report, image)..." 
+                            className="flex-1 bg-black border border-[#333] text-white text-sm p-4 rounded-lg focus:border-white outline-none transition"
+                        />
+                    </div>
+                    
+                    {globalSearchQuery.trim() && globalSearchResults.length === 0 ? (
+                         <p className="text-center text-[#666] text-sm mt-12 italic">No public assets found matching your query.</p>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                            {globalSearchResults.map(f => (
+                                <div key={f.id} className="group bg-[#080808] p-6 rounded-xl border border-[#222] hover:border-white transition-all relative shadow-lg hover:shadow-2xl">
+                                    <div className="absolute top-4 right-4"><span className="text-[8px] font-bold px-2 py-1 rounded-full border uppercase tracking-widest bg-green-500/10 text-green-500 border-green-900/50">Public</span></div>
+                                    
+                                    <div className="flex flex-col h-full">
+                                        <div className="flex justify-between items-start mb-4 pt-2">
+                                            <FileThumbnail path={f.storage_path} fileName={f.file_name} />
+                                        </div>
+                                        
+                                        <h4 className="font-bold text-sm truncate mb-1 text-slate-200 mt-2" title={f.file_name}>{f.file_name}</h4>
+                                        <div className="flex items-center justify-between text-[10px] font-bold text-[#444] uppercase mb-4"><span className="truncate pr-2">{f.owner_username}</span><span className="shrink-0 text-[#666]">{formatBytes(f.file_size)}</span></div>
+                                        
+                                        <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+                                            <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm">💾</button>
+                                            
+                                            {/* Only allow privacy toggle or delete if the searcher actually owns the file */}
+                                            {(user.id === f.user_id || isAdmin) && (
+                                                <>
+                                                <button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm ${f.is_public ? 'text-blue-900 hover:bg-blue-900/20' : 'text-amber-900 hover:bg-amber-900/20'}`}>{f.is_public ? '🌐' : '🔒'}</button>
+                                                <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-red-500 hover:border-red-900/50 hover:bg-red-500/10 transition text-xs text-[#444] shadow-sm">🗑️</button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+
+            // VIEW LOGIC: COMMS UI & CHAT ENGINE
+            ) : viewingComms ? (
                 <div className="animate-in slide-in-from-bottom-4 duration-500">
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         
