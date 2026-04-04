@@ -221,9 +221,9 @@ export default function DistributedFileHub() {
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
   const [viewingComms, setViewingComms] = useState(false);
-  const [viewingSearch, setViewingSearch] = useState(false); // NEW: Global Search State
+  const [viewingSearch, setViewingSearch] = useState(false); 
 
-  // GLOBAL SEARCH STATE (NEW)
+  // GLOBAL SEARCH STATE
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
 
@@ -406,7 +406,7 @@ export default function DistributedFileHub() {
     }
   };
 
-  // NEW: GLOBAL SEARCH LOGIC
+  // GLOBAL SEARCH LOGIC
   const performGlobalSearch = async (q: string) => {
       setGlobalSearchQuery(q);
       if (!q.trim()) {
@@ -414,7 +414,6 @@ export default function DistributedFileHub() {
           return;
       }
       
-      // EXPLICITLY FILTER FOR is_public = true
       const { data, error } = await supabase
           .from('files')
           .select('*')
@@ -499,7 +498,6 @@ export default function DistributedFileHub() {
     else setMessages(data || []);
   };
 
-  // HANDLE TYPING EVENT
   const handleTyping = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNewMessage(e.target.value);
     if (user && activeChat) {
@@ -510,7 +508,6 @@ export default function DistributedFileHub() {
     }
   };
 
-  // VOICE NOTE RECORDING LOGIC
   const startRecording = async () => {
       try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -784,7 +781,6 @@ export default function DistributedFileHub() {
               {(unreadSenders.length > 0 || friendRequests.length > 0) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
           </button>
           
-          {/* NEW: GLOBAL SEARCH TAB */}
           <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(true);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
               <span>🌐 Global Network</span>
           </button>
@@ -866,7 +862,7 @@ export default function DistributedFileHub() {
         {/* MAIN BODY CONTENT */}
         <div className="p-12">
             
-            {/* VIEW LOGIC: GLOBAL SEARCH (NEW) */}
+            {/* VIEW LOGIC: GLOBAL SEARCH */}
             {viewingSearch ? (
                 <div className="animate-in slide-in-from-bottom-4 duration-500">
                     <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-6 rounded-xl shadow-2xl mb-8 flex gap-4">
@@ -895,16 +891,9 @@ export default function DistributedFileHub() {
                                         <h4 className="font-bold text-sm truncate mb-1 text-slate-200 mt-2" title={f.file_name}>{f.file_name}</h4>
                                         <div className="flex items-center justify-between text-[10px] font-bold text-[#444] uppercase mb-4"><span className="truncate pr-2">{f.owner_username}</span><span className="shrink-0 text-[#666]">{formatBytes(f.file_size)}</span></div>
                                         
+                                        {/* NEW: ONLY RENDERING THE DOWNLOAD BUTTON IN GLOBAL SEARCH */}
                                         <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
                                             <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm">💾</button>
-                                            
-                                            {/* Only allow privacy toggle or delete if the searcher actually owns the file */}
-                                            {(user.id === f.user_id || isAdmin) && (
-                                                <>
-                                                <button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm ${f.is_public ? 'text-blue-900 hover:bg-blue-900/20' : 'text-amber-900 hover:bg-amber-900/20'}`}>{f.is_public ? '🌐' : '🔒'}</button>
-                                                <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="flex-1 py-2 border border-[#222] rounded flex justify-center hover:text-red-500 hover:border-red-900/50 hover:bg-red-500/10 transition text-xs text-[#444] shadow-sm">🗑️</button>
-                                                </>
-                                            )}
                                         </div>
                                     </div>
                                 </div>
