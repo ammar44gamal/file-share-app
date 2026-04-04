@@ -837,7 +837,7 @@ export default function DistributedFileHub() {
                 {viewingSearch ? (
                     <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Global File Search</h2>
                 ) : viewingComms ? (
-                    <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Secure Connections Log</h2>
+                    <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Connections Log</h2>
                 ) : viewingAdminPanel ? (
                     <h2 className="text-4xl font-bold tracking-tight text-white mb-2">Network Registry</h2>
                 ) : (
