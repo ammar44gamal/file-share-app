@@ -38,7 +38,9 @@ export default function NetworkBackground() {
 
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      
+      // Make the floating nodes solid white
+      ctx.fillStyle = 'rgba(255, 255, 255, 1)';
       
       particles.forEach((p, i) => {
         p.x += p.vx;
@@ -57,8 +59,10 @@ export default function NetworkBackground() {
           
           if (dist < 100) {
             ctx.beginPath();
+            // Draw pure white lines that fade based on distance
             ctx.strokeStyle = `rgba(255, 255, 255, ${1 - dist / 100})`;
-            ctx.lineWidth = 0.5;
+            // Increased line thickness to make the network stand out more
+            ctx.lineWidth = 1.0; 
             ctx.moveTo(p.x, p.y);
             ctx.lineTo(p2.x, p2.y);
             ctx.stroke();
@@ -78,8 +82,10 @@ export default function NetworkBackground() {
   return (
     <canvas 
       ref={canvasRef} 
-      className="absolute inset-0 w-full h-full z-0 opacity-20 pointer-events-none fade-in duration-1000"
-      style={{ maskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 20%, transparent 100%)' }}
+      // Changed opacity-20 to opacity-60 to make it clearly white
+      className="absolute inset-0 w-full h-full z-0 opacity-60 pointer-events-none fade-in duration-1000"
+      // Extended the black mask from 20% to 50% so the bright part covers more of the header
+      style={{ maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)' }}
     />
   );
 }
