@@ -55,13 +55,14 @@ export default function ChatInterface({
                 </div>
 
                 {/* RIGHT COLUMN: FRIENDS LIST & LIVE CHAT WINDOW */}
-                <div className="lg:col-span-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-4 md:p-6 rounded-xl shadow-2xl flex flex-col h-[500px] md:h-[600px] lg:h-auto min-h-[500px]">
+                {/* Changed: Increased min-height on desktop so it stretches down nicely */}
+                <div className="lg:col-span-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-4 md:p-6 rounded-xl shadow-2xl flex flex-col h-[500px] md:h-[600px] lg:h-full lg:min-h-[650px]">
                     <h3 className="font-bold text-lg mb-4 text-white hidden md:block">Connected Friends</h3>
                     
-                    <div className="flex gap-2 md:gap-3 overflow-x-auto pb-3 md:pb-4 border-b border-[#222] mb-3 md:mb-4 scrollbar-hide pt-1 md:pt-2 shrink-0">
+                    <div className="flex gap-2 md:gap-3 overflow-x-auto pb-3 border-b border-[#222] mb-3 scrollbar-hide shrink-0">
                         {friends.length === 0 ? <p className="text-xs text-[#666] italic pl-1">No established connections.</p> : (
                             friends.map((f: any) => (
-                                <button key={f.friendship_id} onClick={() => setActiveChat(f)} className={`relative flex-shrink-0 px-3 md:px-4 py-2 rounded-lg border text-xs font-bold transition ${activeChat?.friendship_id === f.friendship_id ? 'bg-white text-black border-white' : 'bg-black text-[#888] border-[#333] hover:border-white hover:text-white'}`}>
+                                <button key={f.friendship_id} onClick={() => setActiveChat(f)} className={`relative flex-shrink-0 px-3 py-1.5 rounded-lg border text-xs font-bold transition ${activeChat?.friendship_id === f.friendship_id ? 'bg-white text-black border-white' : 'bg-black text-[#888] border-[#333] hover:border-white hover:text-white'}`}>
                                     {f.username}
                                     {unreadSenders.includes(f.friend_id) && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border border-black animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
                                 </button>
@@ -78,16 +79,17 @@ export default function ChatInterface({
                         ) : (
                             <>
                                 {/* CHAT HEADER */}
-                                <div className="p-3 md:p-4 border-b border-[#222] bg-[#111] z-10 flex justify-between items-center shrink-0">
+                                <div className="px-4 py-2 md:py-3 border-b border-[#222] bg-[#111] z-10 flex justify-between items-center shrink-0">
                                     <div>
                                         <p className="text-green-500 text-[8px] md:text-[10px] font-bold uppercase tracking-widest">Secure Channel</p>
-                                        <p className="text-white font-bold text-sm">{activeChat.username}</p>
+                                        <p className="text-white font-bold text-sm leading-tight">{activeChat.username}</p>
                                     </div>
                                     <button onClick={() => setActiveChat(null)} className="text-[#888] hover:text-white text-xs font-bold px-2 py-1 border border-[#333] rounded hover:bg-[#333]">✕</button>
                                 </div>
 
                                 {/* CHAT MESSAGES */}
-                                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 z-10">
+                                {/* Changed: space-y-4 -> space-y-2.5 to bunch messages closer together */}
+                                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-4 space-y-2.5 z-10">
                                     {messages.length === 0 ? (
                                         <div className="h-full flex items-center justify-center text-[#444] text-xs font-bold uppercase tracking-widest italic text-center px-4">
                                             No messages yet. Begin transmission.
@@ -99,11 +101,15 @@ export default function ChatInterface({
                                             
                                             return (
                                                 <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                                                    <div className={`max-w-[85%] md:max-w-[70%] rounded-xl p-2.5 md:p-3 shadow-md ${isMine ? 'bg-blue-600 text-white rounded-br-none' : 'bg-[#222] text-slate-200 rounded-bl-none'}`}>
-                                                        {msg.content && <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>}
+                                                    {/* Changed: Tighter padding inside the chat bubble (px-3 py-2) */}
+                                                    <div className={`max-w-[85%] md:max-w-[70%] rounded-xl px-3 py-2 shadow-md ${isMine ? 'bg-blue-600 text-white rounded-br-none' : 'bg-[#222] text-slate-200 rounded-bl-none'}`}>
+                                                        {/* Changed: Adjusted line height so text doesn't feel overly tall */}
+                                                        {msg.content && <p className="text-sm whitespace-pre-wrap break-words leading-snug">{msg.content}</p>}
                                                         
+                                                        {/* SMART FILE/AUDIO RENDERER */}
                                                         {msg.file_name && (
-                                                            <div className={`mt-2 flex flex-col gap-2 p-1.5 md:p-2 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#444]'}`}>
+                                                            // Changed: Reduced padding inside attachment borders
+                                                            <div className={`mt-1.5 flex flex-col gap-1.5 p-1.5 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#444]'}`}>
                                                                 {isVoiceNote ? (
                                                                     <VoiceNotePlayer path={msg.file_path} isMine={isMine} />
                                                                 ) : (
@@ -111,7 +117,7 @@ export default function ChatInterface({
                                                                 )}
                                                                 
                                                                 {!isVoiceNote && (
-                                                                    <div className="flex items-center justify-between gap-3 px-1 mt-1">
+                                                                    <div className="flex items-center justify-between gap-3 px-1 mt-0.5">
                                                                         <span className="text-[10px] truncate max-w-[80px] md:max-w-[120px] font-medium opacity-80">{msg.file_name}</span>
                                                                         <button onClick={() => handleDownload(msg.file_path, msg.file_name)} className="text-[10px] font-bold shrink-0 bg-black/30 hover:bg-black/50 px-2 py-1 rounded transition">💾 Save</button>
                                                                     </div>
@@ -119,7 +125,8 @@ export default function ChatInterface({
                                                             </div>
                                                         )}
                                                         
-                                                        <span className={`text-[8px] block mt-1 flex items-center ${isMine ? 'justify-end gap-1 opacity-90' : 'justify-start opacity-60'}`}>
+                                                        {/* WHATSAPP STYLE READ RECEIPTS */}
+                                                        <span className={`text-[8px] block mt-0.5 flex items-center ${isMine ? 'justify-end gap-1 opacity-90' : 'justify-start opacity-60'}`}>
                                                             {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                                             {isMine && (
                                                                 <span className={`text-[10px] tracking-tighter ${msg.is_read ? 'text-cyan-300 font-black' : 'text-white/60'}`}>
@@ -132,6 +139,7 @@ export default function ChatInterface({
                                             )
                                         })
                                     )}
+                                    {/* TYPING INDICATOR */}
                                     {isTyping && (
                                         <div className="flex justify-start">
                                             <div className="bg-[#222] text-[#888] text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 md:px-4 md:py-2 rounded-xl rounded-bl-none animate-pulse">
@@ -142,7 +150,8 @@ export default function ChatInterface({
                                 </div>
 
                                 {/* CHAT INPUT FORM */}
-                                <form onSubmit={handleSendMessage} className="p-2 md:p-4 bg-[#111] border-t border-[#222] z-10 flex gap-2 md:gap-3 items-center shrink-0">
+                                <form onSubmit={handleSendMessage} className="px-2 py-2 md:px-4 md:py-3 bg-[#111] border-t border-[#222] z-10 flex gap-2 md:gap-3 items-center shrink-0">
+                                    
                                     {isRecording ? (
                                         <div className="flex-1 bg-red-900/20 border border-red-500/50 rounded-lg flex items-center justify-between p-2 md:p-3 transition">
                                             <div className="flex items-center gap-2 md:gap-3">
@@ -158,7 +167,7 @@ export default function ChatInterface({
                                                 value={newMessage} 
                                                 onChange={handleTyping}
                                                 placeholder="Type message..." 
-                                                className="w-full bg-transparent text-white text-xs md:text-sm p-3 outline-none"
+                                                className="w-full bg-transparent text-white text-xs md:text-sm px-3 py-2.5 outline-none"
                                             />
                                             <input type="file" ref={chatFileInputRef} onChange={e => setChatFile(e.target.files?.[0] || null)} className="hidden" id="chat-file" />
                                             <label htmlFor="chat-file" className={`cursor-pointer px-2 md:px-3 text-sm hover:text-white transition flex items-center gap-1 md:gap-2 ${chatFile ? 'text-green-500 font-bold' : 'text-[#666]'}`} title={chatFile ? chatFile.name : "Attach file"}>
@@ -168,15 +177,15 @@ export default function ChatInterface({
                                     )}
 
                                     {isRecording ? (
-                                        <button type="button" onClick={stopRecordingAndSend} className="bg-red-600 text-white font-bold px-3 py-2 md:px-6 md:py-3 rounded-lg text-[10px] md:text-xs uppercase tracking-widest hover:bg-red-500 transition shadow-lg shrink-0">
+                                        <button type="button" onClick={stopRecordingAndSend} className="bg-red-600 text-white font-bold px-4 py-2 md:px-6 md:py-2.5 rounded-lg text-[10px] md:text-xs uppercase tracking-widest hover:bg-red-500 transition shadow-lg shrink-0">
                                             Send
                                         </button>
                                     ) : (
                                         <>
-                                            <button type="button" onClick={startRecording} className="bg-[#222] text-white hover:bg-[#333] p-2 md:p-3 rounded-lg transition shrink-0" title="Voice Note">
+                                            <button type="button" onClick={startRecording} className="bg-[#222] text-white hover:bg-[#333] p-2.5 rounded-lg transition shrink-0" title="Voice Note">
                                                 🎤
                                             </button>
-                                            <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-3 py-2 md:px-6 md:py-3 rounded-lg text-[10px] md:text-xs uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shrink-0">
+                                            <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-4 py-2 md:px-6 md:py-2.5 rounded-lg text-[10px] md:text-xs uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shrink-0">
                                                 Send
                                             </button>
                                         </>
