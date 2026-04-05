@@ -1,5 +1,9 @@
 'use client';
 
+// NEW: We need useState for the Lightbox, and supabase to securely fetch the image
+import { useState } from 'react';
+import { supabase } from '../../lib/supabase';
+
 import NetworkBackground from '../ui/NetworkBackground';
 import FileThumbnail from '../ui/FileThumbnail';
 import VoiceNotePlayer from '../ui/VoiceNotePlayer';
@@ -11,8 +15,20 @@ export default function ChatInterface({
     chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend,
     cancelRecording, chatScrollRef
 }: any) {
+
+    // NEW: State to handle the full-screen image preview inside the chat
+    const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
+
+    // NEW: Function to generate a secure URL and open the Lightbox
+    const handlePreview = async (path: string, name: string) => {
+        const { data } = await supabase.storage.from('user-files').createSignedUrl(path, 3600);
+        if (data?.signedUrl) {
+            setPreviewData({ url: data.signedUrl, name });
+        }
+    };
+
     return (
-        <div className="animate-in slide-in-from-bottom-4 duration-500 h-full">
+        <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative">
             <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 md:gap-6 h-full">
                 
                 {/* LEFT COLUMN: SEARCH & REQUESTS */}
@@ -55,7 +71,6 @@ export default function ChatInterface({
                 </div>
 
                 {/* RIGHT COLUMN: FRIENDS LIST & LIVE CHAT WINDOW */}
-                {/* Changed: Switched from fixed pixel height to Viewport Height (vh) so it dynamically fills the screen */}
                 <div className="lg:col-span-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-3 md:p-4 rounded-xl shadow-2xl flex flex-col h-[65vh] md:h-[75vh] lg:h-[80vh] min-h-[500px]">
                     <h3 className="font-bold text-base mb-3 text-white hidden md:block pl-1">Connected Friends</h3>
                     
@@ -88,7 +103,6 @@ export default function ChatInterface({
                                 </div>
 
                                 {/* CHAT MESSAGES */}
-                                {/* Changed: Tighter spacing (space-y-1.5) and less padding */}
                                 <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-2 md:p-3 space-y-1.5 z-10">
                                     {messages.length === 0 ? (
                                         <div className="h-full flex items-center justify-center text-[#444] text-[10px] font-bold uppercase tracking-widest italic text-center px-4">
@@ -98,13 +112,13 @@ export default function ChatInterface({
                                         messages.map((msg: any) => {
                                             const isMine = msg.sender_id === user.id;
                                             const isVoiceNote = msg.file_name === 'Voice Note.webm';
+                                            // Check if it's an image file
+                                            const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
                                             return (
                                                 <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
-                                                    {/* Changed: Smaller bubbles (px-2.5 py-1.5) and restricted max-width to 60% */}
                                                     <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-2.5 py-1.5 shadow-md ${isMine ? 'bg-blue-600 text-white rounded-br-none' : 'bg-[#222] text-slate-200 rounded-bl-none'}`}>
                                                         
-                                                        {/* Changed: Text size shrunk to text-xs */}
                                                         {msg.content && <p className="text-xs whitespace-pre-wrap break-words leading-snug">{msg.content}</p>}
                                                         
                                                         {/* SMART FILE/AUDIO RENDERER */}
@@ -113,23 +127,36 @@ export default function ChatInterface({
                                                                 {isVoiceNote ? (
                                                                     <VoiceNotePlayer path={msg.file_path} isMine={isMine} />
                                                                 ) : (
-                                                                    <FileThumbnail path={msg.file_path} fileName={msg.file_name} isChat={true} />
+                                                                    // CHANGED: Added click handler to the image preview
+                                                                    <div 
+                                                                        className={`overflow-hidden rounded ${isImageFile ? 'cursor-pointer hover:opacity-90 transition' : ''}`}
+                                                                        onClick={() => isImageFile && handlePreview(msg.file_path, msg.file_name)}
+                                                                        title={isImageFile ? "Click to expand" : ""}
+                                                                    >
+                                                                        <FileThumbnail path={msg.file_path} fileName={msg.file_name} isChat={true} />
+                                                                    </div>
                                                                 )}
                                                                 
                                                                 {!isVoiceNote && (
                                                                     <div className="flex items-center justify-between gap-2 px-1 mt-0.5">
                                                                         <span className="text-[9px] truncate max-w-[80px] md:max-w-[120px] font-medium opacity-80">{msg.file_name}</span>
-                                                                        <button onClick={() => handleDownload(msg.file_path, msg.file_name)} className="text-[9px] font-bold shrink-0 bg-black/30 hover:bg-black/50 px-1.5 py-0.5 rounded transition">💾 Save</button>
+                                                                        <div className="flex gap-1 shrink-0">
+                                                                            {/* CHANGED: View button specifically for images */}
+                                                                            {isImageFile && (
+                                                                                <button type="button" onClick={(e) => { e.stopPropagation(); handlePreview(msg.file_path, msg.file_name); }} className="text-[9px] font-bold bg-black/30 hover:bg-black/50 px-1.5 py-0.5 rounded transition">👁️</button>
+                                                                            )}
+                                                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDownload(msg.file_path, msg.file_name); }} className="text-[9px] font-bold bg-black/30 hover:bg-black/50 px-1.5 py-0.5 rounded transition">💾</button>
+                                                                        </div>
                                                                     </div>
                                                                 )}
                                                             </div>
                                                         )}
                                                         
-                                                        {/* WHATSAPP STYLE READ RECEIPTS */}
-                                                        <span className={`text-[7px] block mt-0.5 flex items-center ${isMine ? 'justify-end gap-1 opacity-90' : 'justify-start opacity-60'}`}>
-                                                            {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                        {/* CHANGED: Custom Dark Black / Light Blue Checkmarks */}
+                                                        <span className={`text-[7px] block mt-0.5 flex items-center ${isMine ? 'justify-end gap-1' : 'justify-start opacity-60'}`}>
+                                                            <span className="opacity-90">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                                             {isMine && (
-                                                                <span className={`text-[9px] tracking-tighter ${msg.is_read ? 'text-cyan-300 font-black' : 'text-white/60'}`}>
+                                                                <span className={`text-[10px] tracking-tighter ${msg.is_read ? 'text-[#38bdf8] font-black' : 'text-black opacity-70 font-bold'}`}>
                                                                     ✓✓
                                                                 </span>
                                                             )}
@@ -196,6 +223,36 @@ export default function ChatInterface({
                     </div>
                 </div>
             </div>
+
+            {/* NEW: Full-Screen Image Lightbox */}
+            {previewData && (
+                <div 
+                    className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" 
+                    onClick={() => setPreviewData(null)}
+                >
+                    {/* Close Button */}
+                    <button 
+                        className="absolute top-6 right-6 text-white bg-[#222] border border-[#444] hover:bg-white hover:text-black rounded-full w-10 h-10 flex items-center justify-center font-bold transition shadow-lg z-10" 
+                        onClick={() => setPreviewData(null)}
+                        title="Close Preview"
+                    >
+                        ✕
+                    </button>
+                    
+                    {/* Image */}
+                    <img 
+                        src={previewData.url} 
+                        alt={previewData.name} 
+                        className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl border border-[#333] cursor-default" 
+                        onClick={(e) => e.stopPropagation()} 
+                    />
+                    
+                    {/* Floating Title Tag */}
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111] border border-[#333] text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-lg pointer-events-none">
+                        {previewData.name}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
