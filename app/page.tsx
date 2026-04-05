@@ -412,7 +412,7 @@ export default function DistributedFileHub() {
   if (!user) return <AuthScreen {...{modal, setModal, isSignUp, setIsSignUp, email, setEmail, password, setPassword, username, setUsername, showPassword, setShowPassword, handleAuth, handleForgotPassword}} />;
 
   return (
-    <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black relative overflow-hidden">
+    <div className="flex h-[100dvh] bg-black text-white font-sans selection:bg-white selection:text-black relative overflow-hidden">
       <Modal modal={modal} setModal={setModal} showPassword={showPassword} setShowPassword={setShowPassword} />
       <Sidebar {...{isSidebarOpen, setIsSidebarOpen, setSelectedFolder, setViewingAdminPanel, setViewingComms, setViewingSearch, selectedFolder, viewingAdminPanel, viewingComms, viewingSearch, unreadSenders, friendRequests, isAdmin, folders, user, handleFolderDelete, editingFolderId, setEditingFolderId, editingFolderName, setEditingFolderName, handleRenameFolder, newFolderName, setNewFolderName, folderIsPublic, setFolderIsPublic, createFolder}} />
 

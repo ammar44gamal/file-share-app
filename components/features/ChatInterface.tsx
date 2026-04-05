@@ -38,7 +38,7 @@ export default function ChatInterface({
 
     return (
         <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative">
-            <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 md:gap-6 h-full">
+            <div className="flex flex-col-reverse lg:grid lg:grid-cols-3 gap-4 md:gap-6 h-full">
                 
                 {/* LEFT COLUMN: SEARCH & REQUESTS */}
                 <div className="space-y-4 md:space-y-6 flex-shrink-0">
