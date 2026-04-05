@@ -49,7 +49,6 @@ export default function Sidebar({
         const isActive = selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch;
         
         return (
-            // Notice: 'font-bold' was removed from the active state below
             <div key={folder.id} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition group ${isActive ? 'text-white bg-[#111]' : 'text-[#888] hover:text-white'}`}>
                 
                 {editingFolderId === folder.id ? (
@@ -100,7 +99,7 @@ export default function Sidebar({
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity" onClick={() => setIsSidebarOpen(false)} />
             )}
 
-            {/* SIDEBAR (RESPONSIVE - Increased width to w-80) */}
+            {/* SIDEBAR (RESPONSIVE) */}
             <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out z-50 w-80 bg-[#0a0a0a] md:bg-black/90 border-r border-[#222] p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.5)] md:shadow-none`}>
                 <div className="flex items-center justify-between mb-12">
                     <div className="flex items-center gap-3">
@@ -111,7 +110,10 @@ export default function Sidebar({
                 </div>
                 
                 <nav className="flex-1 space-y-1 overflow-y-auto pr-2 scrollbar-hide">
-                    <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel && !viewingComms && !viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
+                    {/* CHANGED: Dashboard is now Main Dashboard with a house emoji */}
+                    <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition flex items-center justify-between ${!selectedFolder && !viewingAdminPanel && !viewingComms && !viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
+                        <span>🏠 Main Dashboard</span>
+                    </button>
                     
                     <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingSearch(false); setViewingComms(true); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
                         <span>💬 Chats</span>
