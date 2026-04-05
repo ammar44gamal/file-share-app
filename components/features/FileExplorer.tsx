@@ -14,10 +14,30 @@ export default function FileExplorer({
                     <h3 className="text-base md:text-lg font-bold mb-3 md:mb-4">Deploy Assets</h3>
                     <div className="flex flex-col sm:flex-row items-center gap-3 md:gap-4">
                         <div className="flex-1 flex flex-col sm:flex-row items-center gap-3 w-full">
-                            <input type="file" ref={fileInputRef} onChange={e => setFile(e.target.files?.[0] || null)} className="block w-full text-xs text-[#888] file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border file:border-[#333] file:bg-black file:text-white cursor-pointer hover:file:bg-white hover:file:text-black transition file:transition" />
-                            {file && <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="w-full sm:w-auto px-4 py-2 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10">CLEAR</button>}
+                            
+                            {/* CHANGED: Custom Drag-and-Drop Wrapper */}
+                            <div className="flex-1 relative w-full flex items-center gap-3 border border-dashed border-[#444] bg-black/40 hover:bg-black/80 rounded-lg p-1.5 transition group">
+                                {/* The invisible native input stretched over the whole box */}
+                                <input 
+                                    type="file" 
+                                    ref={fileInputRef} 
+                                    onChange={e => setFile(e.target.files?.[0] || null)} 
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
+                                    title="" // Removes the default browser tooltip
+                                />
+                                {/* Our custom fake button */}
+                                <div className="bg-black border border-[#333] text-white text-xs px-4 py-2 rounded-md font-medium group-hover:bg-white group-hover:text-black transition">
+                                    Choose File
+                                </div>
+                                {/* Our custom dynamic text */}
+                                <span className="text-xs text-[#888] truncate flex-1 pr-2">
+                                    {file ? file.name : "No file chosen (you can drag & drop here)"}
+                                </span>
+                            </div>
+
+                            {file && <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="w-full sm:w-auto px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10 z-20">CLEAR</button>}
                         </div>
-                        <button onClick={handleUpload} disabled={uploading || !file} className="w-full sm:w-auto bg-white text-black px-8 py-2.5 rounded-lg font-bold text-[11px] md:text-xs uppercase tracking-widest hover:bg-[#ccc] transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0">{uploading ? 'Wait...' : 'Distribute'}</button>
+                        <button onClick={handleUpload} disabled={uploading || !file} className="w-full sm:w-auto bg-white text-black px-8 py-2.5 rounded-lg font-bold text-[11px] md:text-xs uppercase tracking-widest hover:bg-[#ccc] transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0 z-20">{uploading ? 'Wait...' : 'Distribute'}</button>
                     </div>
                     <div className="mt-4 md:mt-3 flex items-center gap-2 pl-1">
                         <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333] cursor-pointer w-3 h-3" />
@@ -30,7 +50,6 @@ export default function FileExplorer({
                 </div>
             )}
 
-            {/* Changed: Increased columns (lg:grid-cols-4 xl:grid-cols-5) and reduced gap to make files smaller */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-5">
             {filesList.map((f: any) => (
                 <div key={f.id} className="group bg-[#080808] p-4 md:p-5 rounded-xl border border-[#222] hover:border-white transition-all relative shadow-lg hover:shadow-2xl">
