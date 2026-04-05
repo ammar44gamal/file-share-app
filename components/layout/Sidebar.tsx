@@ -1,0 +1,90 @@
+'use client';
+
+export default function Sidebar({
+    isSidebarOpen, setIsSidebarOpen, setSelectedFolder, setViewingAdminPanel, setViewingComms,
+    setViewingSearch, selectedFolder, viewingAdminPanel, viewingComms, viewingSearch, unreadSenders,
+    friendRequests, isAdmin, folders, user, handleFolderDelete, editingFolderId, setEditingFolderId,
+    editingFolderName, setEditingFolderName, handleRenameFolder, newFolderName, setNewFolderName,
+    folderIsPublic, setFolderIsPublic, createFolder
+}: any) {
+    return (
+        <>
+            {/* MOBILE OVERLAY */}
+            {isSidebarOpen && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity" onClick={() => setIsSidebarOpen(false)} />
+            )}
+
+            {/* SIDEBAR (RESPONSIVE) */}
+            <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out z-50 w-64 bg-[#0a0a0a] md:bg-black/90 border-r border-[#222] p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.5)] md:shadow-none`}>
+                <div className="flex items-center justify-between mb-12">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
+                        <h1 className="font-bold text-lg tracking-tight">FileHub</h1>
+                    </div>
+                    <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-[#888] hover:text-white text-xl">✕</button>
+                </div>
+                
+                <nav className="flex-1 space-y-1 overflow-y-auto pr-2 scrollbar-hide">
+                    <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition ${!selectedFolder && !viewingAdminPanel && !viewingComms && !viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>Dashboard</button>
+                    
+                    <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingSearch(false); setViewingComms(true); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingComms ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
+                        <span>💬 Chats</span>
+                        {(unreadSenders.length > 0 || friendRequests.length > 0) && <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
+                    </button>
+                    
+                    <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(true); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-2 flex items-center justify-between ${viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
+                        <span>🌐 Global Search</span>
+                    </button>
+
+                    {isAdmin && (
+                        <button onClick={() => {setSelectedFolder(null); setViewingComms(false); setViewingSearch(false); setViewingAdminPanel(true); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
+                    )}
+                    
+                    <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
+                    {folders.map((folder: any) => (
+                        <div key={folder.id} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white group'}`}>
+                        
+                        {editingFolderId === folder.id ? (
+                            <input
+                                autoFocus
+                                type="text"
+                                className="bg-black border border-[#444] text-white px-2 py-1 rounded w-full outline-none text-xs font-normal"
+                                value={editingFolderName}
+                                onChange={(e) => setEditingFolderName(e.target.value)}
+                                onBlur={() => handleRenameFolder(folder.id, editingFolderName)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleRenameFolder(folder.id, editingFolderName);
+                                    if (e.key === 'Escape') setEditingFolderId(null);
+                                }}
+                            />
+                        ) : (
+                            <span 
+                                className="truncate pr-4 cursor-pointer flex-1 py-1" 
+                                onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false); setIsSidebarOpen(false);}}
+                            >
+                                📂 {folder.name}
+                            </span>
+                        )}
+
+                        {(folder.user_id === user?.id || isAdmin) && editingFolderId !== folder.id && (
+                            <div className="flex items-center gap-3 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                                <span onClick={(e) => { e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }} className="text-[10px] hover:text-blue-500 cursor-pointer p-1" title="Rename">✏️</span>
+                                <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer p-1" title="Delete">✕</span>
+                            </div>
+                        )}
+                        </div>
+                    ))}
+                </nav>
+
+                <div className="mt-auto pt-6 border-t border-[#222]">
+                    <input type="text" placeholder="Folder name" className="w-full text-xs p-3 bg-black border border-[#333] rounded-lg mb-2 text-white outline-none focus:border-white" value={newFolderName} onChange={e => setNewFolderName(e.target.value)} />
+                    <div className="flex items-center gap-2 mb-4 pl-1">
+                        <input type="checkbox" checked={folderIsPublic} onChange={e => setFolderIsPublic(e.target.checked)} id="fvis" className="rounded bg-black border-[#333]" />
+                        <label htmlFor="fvis" className="text-[10px] font-bold text-[#444] uppercase tracking-widest cursor-pointer">PUBLIC GROUP</label>
+                    </div>
+                    <button onClick={createFolder} className="w-full py-2.5 bg-white text-black text-[10px] font-bold rounded-lg uppercase tracking-widest hover:bg-[#ccc] transition">NEW FOLDER</button>
+                </div>
+            </aside>
+        </>
+    );
+}
