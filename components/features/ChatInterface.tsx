@@ -33,12 +33,71 @@ export default function ChatInterface({
         }
     };
 
+    // CHANGED: The startRecording logic is now format-agnostic. 
+    // It detects Safari vs Chrome and saves the exact correct format.
+    const startRecordingVoiceNote = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+            
+            mediaRecorder.ondataavailable = (e) => { 
+                if (e.data.size > 0) audioChunksRef.current.push(e.data); 
+            };
+            
+            mediaRecorder.onstop = async () => {
+                if (audioChunksRef.current.length === 0) return;
+                
+                // 1. DETECT THE BROWSER'S TRUE NATIVE MIME TYPE
+                const actualMimeType = mediaRecorder.mimeType || 'audio/webm';
+                
+                // 2. ASSIGN THE CORRECT EXTENSION BASED ON THE MIME TYPE
+                let ext = 'webm';
+                if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) {
+                    ext = 'mp4'; // Safari
+                } else if (actualMimeType.includes('ogg')) {
+                    ext = 'ogg'; // Firefox
+                } else if (actualMimeType.includes('aac')) {
+                    ext = 'aac'; 
+                }
+
+                const fileName = `Voice Note.${ext}`;
+                const filePath = `chat-audio-${Date.now()}-${Math.random().toString(36).substring(2,9)}.${ext}`;
+                
+                // 3. PACKAGE THE BLOB PROPERLY
+                const audioFile = new File(
+                    [new Blob(audioChunksRef.current, { type: actualMimeType })], 
+                    fileName, 
+                    { type: actualMimeType }
+                );
+                
+                const { error: uploadError } = await supabase.storage.from('user-files').upload(filePath, audioFile);
+                if (!uploadError && user && activeChat) {
+                    await supabase.from('messages').insert([{ 
+                        sender_id: user.id, 
+                        receiver_id: activeChat.friend_id, 
+                        content: '', 
+                        file_path: filePath, 
+                        file_name: fileName, 
+                        is_read: false 
+                    }]);
+                }
+                stream.getTracks().forEach(track => track.stop()); 
+            };
+            
+            mediaRecorder.start();
+            startRecording(); // Triggers the parent UI state
+        } catch (err) { 
+            console.error(err);
+        }
+    };
+
     return (
         <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative">
             
             <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 md:gap-6 h-full">
                 
-                {/* RIGHT COLUMN (DESKTOP) / TOP COLUMN (MOBILE): FRIENDS LIST & LIVE CHAT */}
                 <div className="lg:col-span-2 lg:order-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-3 md:p-4 rounded-xl shadow-2xl flex flex-col h-[65vh] md:h-[75vh] lg:h-[80vh] min-h-[500px]">
                     
                     <h3 className="font-bold text-base mb-3 text-white pl-1">Connected Friends</h3>
@@ -62,7 +121,6 @@ export default function ChatInterface({
                             </div>
                         ) : (
                             <>
-                                {/* CHAT HEADER */}
                                 <div className="px-3 py-2 border-b border-[#222] bg-[#111] z-10 flex justify-between items-center shrink-0">
                                     <div>
                                         <p className="text-green-500 text-[8px] font-bold uppercase tracking-widest">Secure Channel</p>
@@ -71,7 +129,6 @@ export default function ChatInterface({
                                     <button onClick={() => setActiveChat(null)} className="text-[#888] hover:text-white text-[10px] font-bold px-2 py-1 border border-[#333] rounded hover:bg-[#333]">✕</button>
                                 </div>
 
-                                {/* CHAT MESSAGES */}
                                 <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-2 md:p-3 space-y-1.5 z-10">
                                     {messages.length === 0 ? (
                                         <div className="h-full flex items-center justify-center text-[#444] text-[10px] font-bold uppercase tracking-widest italic text-center px-4">
@@ -80,8 +137,7 @@ export default function ChatInterface({
                                     ) : (
                                         messages.map((msg: any) => {
                                             const isMine = msg.sender_id === user.id;
-                                            
-                                            // CHANGED: We now check if the filename STARTS with 'Voice Note' to support both .webm and .mp4
+                                            // Ensure we catch Voice Note.mp4, Voice Note.webm, Voice Note.ogg, etc.
                                             const isVoiceNote = msg.file_name && msg.file_name.startsWith('Voice Note');
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
@@ -91,7 +147,6 @@ export default function ChatInterface({
                                                         
                                                         {msg.content && <p className="text-xs whitespace-pre-wrap break-words leading-snug">{msg.content}</p>}
                                                         
-                                                        {/* SMART FILE/AUDIO RENDERER */}
                                                         {msg.file_name && (
                                                             <div className={`mt-1 flex flex-col gap-1 p-1 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#444]'}`}>
                                                                 {isVoiceNote ? (
@@ -120,7 +175,6 @@ export default function ChatInterface({
                                                             </div>
                                                         )}
                                                         
-                                                        {/* Checkmarks */}
                                                         <span className={`text-[7px] block mt-0.5 flex items-center ${isMine ? 'justify-end gap-1' : 'justify-start opacity-60'}`}>
                                                             <span className="opacity-90">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                                             {isMine && (
@@ -134,7 +188,6 @@ export default function ChatInterface({
                                             )
                                         })
                                     )}
-                                    {/* TYPING INDICATOR */}
                                     {isTyping && (
                                         <div className="flex justify-start">
                                             <div className="bg-[#222] text-[#888] text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-xl rounded-bl-none animate-pulse">
@@ -142,11 +195,9 @@ export default function ChatInterface({
                                             </div>
                                         </div>
                                     )}
-
                                     <div ref={messagesEndRef} />
                                 </div>
 
-                                {/* CHAT INPUT FORM */}
                                 <form onSubmit={handleSendMessage} className="p-2 bg-[#111] border-t border-[#222] z-10 flex gap-2 items-center shrink-0">
                                     {isRecording ? (
                                         <div className="flex-1 bg-red-900/20 border border-red-500/50 rounded-lg flex items-center justify-between p-2 transition">
@@ -178,7 +229,8 @@ export default function ChatInterface({
                                         </button>
                                     ) : (
                                         <>
-                                            <button type="button" onClick={startRecording} className="bg-[#222] text-white hover:bg-[#333] p-2 rounded-lg transition shrink-0" title="Voice Note">
+                                            {/* CHANGED: This button now triggers our new dynamic recording function */}
+                                            <button type="button" onClick={startRecordingVoiceNote} className="bg-[#222] text-white hover:bg-[#333] p-2 rounded-lg transition shrink-0" title="Voice Note">
                                                 🎤
                                             </button>
                                             <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-4 py-2 rounded-lg text-[9px] uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shrink-0">
@@ -192,7 +244,6 @@ export default function ChatInterface({
                     </div>
                 </div>
 
-                {/* LEFT COLUMN (DESKTOP) / BOTTOM COLUMN (MOBILE): SEARCH & REQUESTS */}
                 <div className="space-y-4 md:space-y-6 flex-shrink-0 lg:col-span-1 lg:order-1">
                     <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-4 md:p-5 rounded-xl shadow-2xl">
                         <h3 className="font-bold text-base mb-3 text-white">Find Friends</h3>
@@ -233,7 +284,6 @@ export default function ChatInterface({
 
             </div>
 
-            {/* Full-Screen Image Lightbox */}
             {previewData && (
                 <div 
                     className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" 
