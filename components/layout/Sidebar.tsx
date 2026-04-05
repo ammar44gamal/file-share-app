@@ -49,7 +49,8 @@ export default function Sidebar({
         const isActive = selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch;
         
         return (
-            <div key={folder.id} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition group ${isActive ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
+            // Notice: 'font-bold' was removed from the active state below
+            <div key={folder.id} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition group ${isActive ? 'text-white bg-[#111]' : 'text-[#888] hover:text-white'}`}>
                 
                 {editingFolderId === folder.id ? (
                     <input
@@ -99,8 +100,8 @@ export default function Sidebar({
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity" onClick={() => setIsSidebarOpen(false)} />
             )}
 
-            {/* SIDEBAR (RESPONSIVE - Increased width to w-72) */}
-            <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out z-50 w-72 bg-[#0a0a0a] md:bg-black/90 border-r border-[#222] p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.5)] md:shadow-none`}>
+            {/* SIDEBAR (RESPONSIVE - Increased width to w-80) */}
+            <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out z-50 w-80 bg-[#0a0a0a] md:bg-black/90 border-r border-[#222] p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.5)] md:shadow-none`}>
                 <div className="flex items-center justify-between mb-12">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
