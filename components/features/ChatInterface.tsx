@@ -1,7 +1,7 @@
 'use client';
 
-// NEW: We need useState for the Lightbox, and supabase to securely fetch the image
-import { useState } from 'react';
+// CHANGED: Added useEffect and useRef to our imports
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 
 import NetworkBackground from '../ui/NetworkBackground';
@@ -16,10 +16,19 @@ export default function ChatInterface({
     cancelRecording, chatScrollRef
 }: any) {
 
-    // NEW: State to handle the full-screen image preview inside the chat
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
+    
+    // NEW: Create a reference for our invisible anchor at the bottom of the chat
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // NEW: Function to generate a secure URL and open the Lightbox
+    // NEW: Auto-scroll function that triggers whenever activeChat or messages change
+    useEffect(() => {
+        // A tiny timeout ensures the DOM has fully painted the messages before scrolling
+        setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+        }, 10);
+    }, [messages, activeChat, isTyping]);
+
     const handlePreview = async (path: string, name: string) => {
         const { data } = await supabase.storage.from('user-files').createSignedUrl(path, 3600);
         if (data?.signedUrl) {
@@ -112,7 +121,6 @@ export default function ChatInterface({
                                         messages.map((msg: any) => {
                                             const isMine = msg.sender_id === user.id;
                                             const isVoiceNote = msg.file_name === 'Voice Note.webm';
-                                            // Check if it's an image file
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
                                             return (
@@ -127,7 +135,6 @@ export default function ChatInterface({
                                                                 {isVoiceNote ? (
                                                                     <VoiceNotePlayer path={msg.file_path} isMine={isMine} />
                                                                 ) : (
-                                                                    // CHANGED: Added click handler to the image preview
                                                                     <div 
                                                                         className={`overflow-hidden rounded ${isImageFile ? 'cursor-pointer hover:opacity-90 transition' : ''}`}
                                                                         onClick={() => isImageFile && handlePreview(msg.file_path, msg.file_name)}
@@ -141,7 +148,6 @@ export default function ChatInterface({
                                                                     <div className="flex items-center justify-between gap-2 px-1 mt-0.5">
                                                                         <span className="text-[9px] truncate max-w-[80px] md:max-w-[120px] font-medium opacity-80">{msg.file_name}</span>
                                                                         <div className="flex gap-1 shrink-0">
-                                                                            {/* CHANGED: View button specifically for images */}
                                                                             {isImageFile && (
                                                                                 <button type="button" onClick={(e) => { e.stopPropagation(); handlePreview(msg.file_path, msg.file_name); }} className="text-[9px] font-bold bg-black/30 hover:bg-black/50 px-1.5 py-0.5 rounded transition">👁️</button>
                                                                             )}
@@ -152,7 +158,7 @@ export default function ChatInterface({
                                                             </div>
                                                         )}
                                                         
-                                                        {/* CHANGED: Custom Dark Black / Light Blue Checkmarks */}
+                                                        {/* Custom Dark Black / Light Blue Checkmarks */}
                                                         <span className={`text-[7px] block mt-0.5 flex items-center ${isMine ? 'justify-end gap-1' : 'justify-start opacity-60'}`}>
                                                             <span className="opacity-90">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                                             {isMine && (
@@ -174,6 +180,9 @@ export default function ChatInterface({
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* CHANGED: This is our invisible anchor. It forces the scroll to bottom! */}
+                                    <div ref={messagesEndRef} />
                                 </div>
 
                                 {/* CHAT INPUT FORM */}
@@ -224,13 +233,12 @@ export default function ChatInterface({
                 </div>
             </div>
 
-            {/* NEW: Full-Screen Image Lightbox */}
+            {/* Full-Screen Image Lightbox */}
             {previewData && (
                 <div 
                     className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" 
                     onClick={() => setPreviewData(null)}
                 >
-                    {/* Close Button */}
                     <button 
                         className="absolute top-6 right-6 text-white bg-[#222] border border-[#444] hover:bg-white hover:text-black rounded-full w-10 h-10 flex items-center justify-center font-bold transition shadow-lg z-10" 
                         onClick={() => setPreviewData(null)}
@@ -238,16 +246,12 @@ export default function ChatInterface({
                     >
                         ✕
                     </button>
-                    
-                    {/* Image */}
                     <img 
                         src={previewData.url} 
                         alt={previewData.name} 
                         className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl border border-[#333] cursor-default" 
                         onClick={(e) => e.stopPropagation()} 
                     />
-                    
-                    {/* Floating Title Tag */}
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111] border border-[#333] text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-lg pointer-events-none">
                         {previewData.name}
                     </div>

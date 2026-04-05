@@ -32,9 +32,11 @@ export default function DistributedFileHub() {
   const [folderSizes, setFolderSizes] = useState<Record<string, number>>({}); 
   const [newFolderName, setNewFolderName] = useState('');
   const [folderIsPublic, setFolderIsPublic] = useState(true);
-  const [file, setFile] = useState<File | null>(null);
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
+  
+  // CHANGED: State now holds an array of files instead of a single file
+  const [files, setFiles] = useState<File[]>([]);
 
   // FOLDER RENAMING STATE
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
@@ -180,9 +182,7 @@ export default function DistributedFileHub() {
     const { data } = await supabase
         .from('admin_user_stats')
         .select('*')
-        // This sorts by the newest login time first, and puts users who have never logged in at the very bottom
-        .order('last_login', { ascending: false, nullsFirst: false }); 
-        
+        .order('last_login', { ascending: false, nullsFirst: false });
     setAdminUserList(data || []);
   };
   const fetchFolders = async () => {
@@ -206,7 +206,7 @@ export default function DistributedFileHub() {
       if (!error && data) setGlobalSearchResults(data);
   };
 
-  // 5. SOCIAL / COMMS LOGIC
+  // 5. SOCIAL / COMMS LOGIC (Unchanged)
   const fetchSocialData = async () => {
     if (!user) return;
     const { data: fData, error } = await supabase.from('friendships').select('*').or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
@@ -256,7 +256,6 @@ export default function DistributedFileHub() {
     if (user && activeChat) supabase.channel(`chat-${[user.id, activeChat.friend_id].sort().join('-')}`).send({ type: 'broadcast', event: 'typing', payload: { sender_id: user.id } });
   };
 
-  // AUDIO RECORDING LOGIC
   const startRecording = async () => {
       try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -339,17 +338,46 @@ export default function DistributedFileHub() {
       const { error } = await supabase.from('folders').update({ name: newName.trim() }).eq('id', folderId);
       if (error) showAlert("Database Error", error.message); else { setEditingFolderId(null); fetchFolders(); }
   };
+
+  // CHANGED: Sequential Multi-File Upload Logic
   const handleUpload = async () => {
-    if (!file || !user) return;
+    if (!files || files.length === 0 || !user) return;
     setUploading(true);
+    
     try {
-      const fileName = `${Math.random()}.${file.name.split('.').pop()}`;
-      await supabase.storage.from('user-files').upload(fileName, file);
-      const { error } = await supabase.from('files').insert([{ file_name: file.name, file_size: file.size, storage_path: fileName, is_public: isPublic, owner_username: profileName || user.email.split('@')[0], user_id: user.id, folder_id: selectedFolder }]);
-      if (error) showAlert("Database Error", error.message);
-      setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; fetchFiles();
-    } finally { setUploading(false); }
+      // Loop through all selected files sequentially to preserve order
+      for (const currentFile of files) {
+          const fileName = `${Math.random()}.${currentFile.name.split('.').pop()}`;
+          
+          // 1. Upload to Storage
+          await supabase.storage.from('user-files').upload(fileName, currentFile);
+          
+          // 2. Insert DB Record
+          const { error } = await supabase.from('files').insert([{ 
+              file_name: currentFile.name, 
+              file_size: currentFile.size, 
+              storage_path: fileName, 
+              is_public: isPublic, 
+              owner_username: profileName || user.email.split('@')[0], 
+              user_id: user.id, 
+              folder_id: selectedFolder 
+          }]);
+          
+          if (error) {
+              showAlert("Database Error", `Error uploading ${currentFile.name}: ${error.message}`);
+          }
+      }
+      
+      // Clear queue when done
+      setFiles([]); 
+      if (fileInputRef.current) fileInputRef.current.value = ""; 
+      fetchFiles();
+      
+    } finally { 
+        setUploading(false); 
+    }
   };
+
   const handleDownload = async (path: string, name: string) => {
     const { data } = await supabase.storage.from('user-files').download(path);
     if (data) { const url = URL.createObjectURL(data); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); }
@@ -388,20 +416,15 @@ export default function DistributedFileHub() {
 
   return (
     <div className="flex h-screen bg-black text-white font-sans selection:bg-white selection:text-black relative overflow-hidden">
-      
       <Modal modal={modal} setModal={setModal} showPassword={showPassword} setShowPassword={setShowPassword} />
-      
       <Sidebar {...{isSidebarOpen, setIsSidebarOpen, setSelectedFolder, setViewingAdminPanel, setViewingComms, setViewingSearch, selectedFolder, viewingAdminPanel, viewingComms, viewingSearch, unreadSenders, friendRequests, isAdmin, folders, user, handleFolderDelete, editingFolderId, setEditingFolderId, editingFolderName, setEditingFolderName, handleRenameFolder, newFolderName, setNewFolderName, folderIsPublic, setFolderIsPublic, createFolder}} />
 
       <main className="flex-1 overflow-y-auto relative flex flex-col h-full w-full">
-        
         <button onClick={() => setIsSidebarOpen(true)} className="md:hidden absolute top-4 left-4 z-30 w-10 h-10 bg-[#111] border border-[#333] rounded-lg flex items-center justify-center text-white hover:border-white transition-colors">
             <span className="text-xl leading-none -mt-1">≡</span>
         </button>
-
         <AccountMenu {...{showAccountMenu, setShowAccountMenu, profileName, userEmail: user.email, handleChangePassword, handleLogout}} />
 
-        {/* COMPACT HEADER SECTION (Zoomed Out) */}
         <div className="relative pt-16 md:pt-10 px-6 md:px-8 pb-5 md:pb-6 border-b border-[#222]/50 bg-gradient-to-b from-[#0a0a0a] to-black shrink-0">
             <NetworkBackground />
             <div className="relative z-10 pl-2 md:pl-0">
@@ -427,12 +450,12 @@ export default function DistributedFileHub() {
             </div>
         </div>
 
-        {/* MAIN CONTENT ROUTING (Reduced padding to 'p-4 md:p-6 lg:p-8') */}
         <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-y-auto">
             {viewingSearch ? <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
             : viewingComms ? <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef}} />
             : viewingAdminPanel ? <AdminPanel adminUserList={adminUserList} />
-            : <FileExplorer {...{isLockedForUser, currentFolder, fileInputRef, file, setFile, handleUpload, uploading, isPublic, setIsPublic, filesList, formatBytes, handleDownload, user, canManageFolder, toggleFilePrivacy, handleDeleteFile}} />}
+            {/* CHANGED: Passing 'files' array and 'setFiles' to FileExplorer */}
+            : <FileExplorer {...{isLockedForUser, currentFolder, fileInputRef, files, setFiles, handleUpload, uploading, isPublic, setIsPublic, filesList, formatBytes, handleDownload, user, canManageFolder, toggleFilePrivacy, handleDeleteFile}} />}
         </div>
       </main>
     </div>

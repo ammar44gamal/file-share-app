@@ -5,15 +5,14 @@ import { supabase } from '../../lib/supabase';
 import FileThumbnail from '../ui/FileThumbnail';
 
 export default function FileExplorer({
-    isLockedForUser, currentFolder, fileInputRef, file, setFile, handleUpload, uploading,
+    // CHANGED: Expected props are now 'files' and 'setFiles'
+    isLockedForUser, currentFolder, fileInputRef, files, setFiles, handleUpload, uploading,
     isPublic, setIsPublic, filesList, formatBytes, handleDownload, user, canManageFolder,
     toggleFilePrivacy, handleDeleteFile
 }: any) {
     
-    // NEW: State to handle the full-screen image preview
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
 
-    // NEW: Function to generate a secure URL and open the Lightbox
     const handlePreview = async (path: string, name: string) => {
         const { data } = await supabase.storage.from('user-files').createSignedUrl(path, 3600);
         if (data?.signedUrl) {
@@ -30,24 +29,34 @@ export default function FileExplorer({
                         <div className="flex-1 flex flex-col sm:flex-row items-center gap-3 w-full">
                             
                             <div className="flex-1 relative w-full flex items-center gap-3 border border-dashed border-[#444] bg-black/40 hover:bg-black/80 rounded-lg p-1.5 transition group">
+                                {/* CHANGED: Added 'multiple' attribute and updated onChange */}
                                 <input 
                                     type="file" 
+                                    multiple
                                     ref={fileInputRef} 
-                                    onChange={e => setFile(e.target.files?.[0] || null)} 
+                                    onChange={e => setFiles(Array.from(e.target.files || []))} 
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
                                     title=""
                                 />
-                                <div className="bg-black border border-[#333] text-white text-xs px-4 py-2 rounded-md font-medium group-hover:bg-white group-hover:text-black transition">
-                                    Choose File
+                                <div className="bg-black border border-[#333] text-white text-xs px-4 py-2 rounded-md font-medium group-hover:bg-white group-hover:text-black transition shrink-0">
+                                    Choose Files
                                 </div>
+                                {/* CHANGED: Dynamic text handling based on number of files */}
                                 <span className="text-xs text-[#888] truncate flex-1 pr-2">
-                                    {file ? file.name : "No file chosen (you can drag & drop here)"}
+                                    {files && files.length > 0 
+                                        ? files.length === 1 
+                                            ? files[0].name 
+                                            : `${files.length} files selected for deployment` 
+                                        : "No files chosen (you can drag & drop here)"}
                                 </span>
                             </div>
 
-                            {file && <button onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="w-full sm:w-auto px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10 z-20">CLEAR</button>}
+                            {/* CHANGED: Disable logic checks the array length */}
+                            {files && files.length > 0 && <button onClick={() => { setFiles([]); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="w-full sm:w-auto px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10 z-20">CLEAR</button>}
                         </div>
-                        <button onClick={handleUpload} disabled={uploading || !file} className="w-full sm:w-auto bg-white text-black px-8 py-2.5 rounded-lg font-bold text-[11px] md:text-xs uppercase tracking-widest hover:bg-[#ccc] transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0 z-20">{uploading ? 'Wait...' : 'Distribute'}</button>
+                        <button onClick={handleUpload} disabled={uploading || !files || files.length === 0} className="w-full sm:w-auto bg-white text-black px-8 py-2.5 rounded-lg font-bold text-[11px] md:text-xs uppercase tracking-widest hover:bg-[#ccc] transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0 z-20">
+                            {uploading ? 'Wait...' : 'Distribute'}
+                        </button>
                     </div>
                     <div className="mt-4 md:mt-3 flex items-center gap-2 pl-1">
                         <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333] cursor-pointer w-3 h-3" />
@@ -62,7 +71,6 @@ export default function FileExplorer({
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-5">
             {filesList.map((f: any) => {
-                // Check if the file is an image based on its extension
                 const isImage = f.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
 
                 return (
@@ -78,12 +86,9 @@ export default function FileExplorer({
                         <div className="flex items-center justify-between text-[9px] font-bold text-[#444] uppercase mb-3"><span className="truncate pr-2">{f.owner_username}</span><span className="shrink-0 text-[#666]">{formatBytes(f.file_size)}</span></div>
                         
                         <div className="mt-auto pt-3 border-t border-[#222] flex gap-1.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all duration-300">
-                            
-                            {/* NEW: View Button (Only renders if the file is an image) */}
                             {isImage && (
                                 <button onClick={() => handlePreview(f.storage_path, f.file_name)} className="flex-1 py-1.5 md:py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm" title="View Image">👁️</button>
                             )}
-
                             <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-1.5 md:py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm" title="Download">💾</button>
                             
                             {(user.id === f.user_id || canManageFolder) && (
@@ -99,13 +104,11 @@ export default function FileExplorer({
             })}
             </div>
 
-            {/* NEW: Full-Screen Image Lightbox */}
             {previewData && (
                 <div 
                     className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" 
                     onClick={() => setPreviewData(null)}
                 >
-                    {/* Close Button */}
                     <button 
                         className="absolute top-6 right-6 text-white bg-[#222] border border-[#444] hover:bg-white hover:text-black rounded-full w-10 h-10 flex items-center justify-center font-bold transition shadow-lg z-10" 
                         onClick={() => setPreviewData(null)}
@@ -113,16 +116,12 @@ export default function FileExplorer({
                     >
                         ✕
                     </button>
-                    
-                    {/* Image */}
                     <img 
                         src={previewData.url} 
                         alt={previewData.name} 
                         className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl border border-[#333] cursor-default" 
                         onClick={(e) => e.stopPropagation()} 
                     />
-                    
-                    {/* Floating Title Tag */}
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111] border border-[#333] text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-lg pointer-events-none">
                         {previewData.name}
                     </div>
