@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 
 import NetworkBackground from '../ui/NetworkBackground';
@@ -16,13 +16,15 @@ export default function ChatInterface({
 }: any) {
 
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
-    const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // CHANGED: Smarter scroll logic that ONLY scrolls the chat container, not the whole page!
     useEffect(() => {
         setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+            if (chatScrollRef.current) {
+                chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+            }
         }, 10);
-    }, [messages, activeChat, isTyping]);
+    }, [messages, activeChat, isTyping, chatScrollRef]);
 
     const handlePreview = async (path: string, name: string) => {
         const { data } = await supabase.storage.from('user-files').createSignedUrl(path, 3600);
@@ -34,14 +36,11 @@ export default function ChatInterface({
     return (
         <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative">
             
-            {/* CHANGED: Removed flex-col-reverse. Using standard flex-col for mobile. */}
             <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 md:gap-6 h-full">
                 
                 {/* RIGHT COLUMN (DESKTOP) / TOP COLUMN (MOBILE): FRIENDS LIST & LIVE CHAT */}
-                {/* CHANGED: Added lg:order-2 to move this to the right on large screens */}
                 <div className="lg:col-span-2 lg:order-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-3 md:p-4 rounded-xl shadow-2xl flex flex-col h-[65vh] md:h-[75vh] lg:h-[80vh] min-h-[500px]">
                     
-                    {/* CHANGED: Removed hidden md:block so the title is visible on mobile */}
                     <h3 className="font-bold text-base mb-3 text-white pl-1">Connected Friends</h3>
                     
                     <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#222] mb-2 scrollbar-hide shrink-0">
@@ -141,8 +140,6 @@ export default function ChatInterface({
                                             </div>
                                         </div>
                                     )}
-
-                                    <div ref={messagesEndRef} />
                                 </div>
 
                                 {/* CHAT INPUT FORM */}
@@ -192,7 +189,6 @@ export default function ChatInterface({
                 </div>
 
                 {/* LEFT COLUMN (DESKTOP) / BOTTOM COLUMN (MOBILE): SEARCH & REQUESTS */}
-                {/* CHANGED: Added lg:order-1 to move this to the left on large screens */}
                 <div className="space-y-4 md:space-y-6 flex-shrink-0 lg:col-span-1 lg:order-1">
                     <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-4 md:p-5 rounded-xl shadow-2xl">
                         <h3 className="font-bold text-base mb-3 text-white">Find Friends</h3>
