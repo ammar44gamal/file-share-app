@@ -216,6 +216,10 @@ export default function DistributedFileHub() {
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
 
+  // NEW: FOLDER RENAMING STATE
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [editingFolderName, setEditingFolderName] = useState('');
+
   // NAVIGATION & UI STATE
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
@@ -635,6 +639,23 @@ export default function DistributedFileHub() {
     else { setNewFolderName(''); fetchFolders(); }
   };
 
+  // NEW: FOLDER RENAME LOGIC
+  const handleRenameFolder = async (folderId: string, newName: string) => {
+      if (!newName.trim()) {
+          setEditingFolderId(null);
+          return;
+      }
+      
+      const { error } = await supabase.from('folders').update({ name: newName.trim() }).eq('id', folderId);
+      
+      if (error) {
+          showAlert("Database Error", error.message);
+      } else {
+          setEditingFolderId(null);
+          fetchFolders();
+      }
+  };
+
   const handleUpload = async () => {
     if (!file || !user) return;
     setUploading(true);
@@ -795,10 +816,38 @@ export default function DistributedFileHub() {
           
           <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
           {folders.map(folder => (
-            <button key={folder.id} onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
-              <span className="truncate pr-4">📂 {folder.name}</span>
-              {(folder.user_id === user.id || isAdmin) && <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer">✕</span>}
-            </button>
+            // NEW: FOLDER RENAME UI INTEGRATION
+            <div key={folder.id} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white group'}`}>
+              
+              {editingFolderId === folder.id ? (
+                  <input
+                      autoFocus
+                      type="text"
+                      className="bg-black border border-[#444] text-white px-2 py-1 rounded w-full outline-none text-xs font-normal"
+                      value={editingFolderName}
+                      onChange={(e) => setEditingFolderName(e.target.value)}
+                      onBlur={() => handleRenameFolder(folder.id, editingFolderName)}
+                      onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleRenameFolder(folder.id, editingFolderName);
+                          if (e.key === 'Escape') setEditingFolderId(null);
+                      }}
+                  />
+              ) : (
+                  <span 
+                      className="truncate pr-4 cursor-pointer flex-1" 
+                      onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false);}}
+                  >
+                      📂 {folder.name}
+                  </span>
+              )}
+
+              {(folder.user_id === user.id || isAdmin) && editingFolderId !== folder.id && (
+                  <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      <span onClick={(e) => { e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }} className="text-[10px] hover:text-blue-500 cursor-pointer" title="Rename">✏️</span>
+                      <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer" title="Delete">✕</span>
+                  </div>
+              )}
+            </div>
           ))}
         </nav>
 
