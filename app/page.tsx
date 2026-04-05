@@ -35,7 +35,7 @@ export default function DistributedFileHub() {
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
   
-  // CHANGED: State now holds an array of files instead of a single file
+  // State now holds an array of files instead of a single file
   const [files, setFiles] = useState<File[]>([]);
 
   // FOLDER RENAMING STATE
@@ -206,7 +206,7 @@ export default function DistributedFileHub() {
       if (!error && data) setGlobalSearchResults(data);
   };
 
-  // 5. SOCIAL / COMMS LOGIC (Unchanged)
+  // 5. SOCIAL / COMMS LOGIC
   const fetchSocialData = async () => {
     if (!user) return;
     const { data: fData, error } = await supabase.from('friendships').select('*').or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
@@ -339,7 +339,7 @@ export default function DistributedFileHub() {
       if (error) showAlert("Database Error", error.message); else { setEditingFolderId(null); fetchFolders(); }
   };
 
-  // CHANGED: Sequential Multi-File Upload Logic
+  // Sequential Multi-File Upload Logic
   const handleUpload = async () => {
     if (!files || files.length === 0 || !user) return;
     setUploading(true);
@@ -349,10 +349,8 @@ export default function DistributedFileHub() {
       for (const currentFile of files) {
           const fileName = `${Math.random()}.${currentFile.name.split('.').pop()}`;
           
-          // 1. Upload to Storage
           await supabase.storage.from('user-files').upload(fileName, currentFile);
           
-          // 2. Insert DB Record
           const { error } = await supabase.from('files').insert([{ 
               file_name: currentFile.name, 
               file_size: currentFile.size, 
@@ -368,7 +366,6 @@ export default function DistributedFileHub() {
           }
       }
       
-      // Clear queue when done
       setFiles([]); 
       if (fileInputRef.current) fileInputRef.current.value = ""; 
       fetchFiles();
@@ -451,11 +448,18 @@ export default function DistributedFileHub() {
         </div>
 
         <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-y-auto">
-            {viewingSearch ? <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
-            : viewingComms ? <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef}} />
-            : viewingAdminPanel ? <AdminPanel adminUserList={adminUserList} />
-            {/* CHANGED: Passing 'files' array and 'setFiles' to FileExplorer */}
-            : <FileExplorer {...{isLockedForUser, currentFolder, fileInputRef, files, setFiles, handleUpload, uploading, isPublic, setIsPublic, filesList, formatBytes, handleDownload, user, canManageFolder, toggleFilePrivacy, handleDeleteFile}} />}
+            {/* Properly formatted conditional logic.
+               This removes the bad copy-paste that was throwing errors!
+            */}
+            {viewingSearch ? (
+                <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
+            ) : viewingComms ? (
+                <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef}} />
+            ) : viewingAdminPanel ? (
+                <AdminPanel adminUserList={adminUserList} />
+            ) : (
+                <FileExplorer {...{isLockedForUser, currentFolder, fileInputRef, files, setFiles, handleUpload, uploading, isPublic, setIsPublic, filesList, formatBytes, handleDownload, user, canManageFolder, toggleFilePrivacy, handleDeleteFile}} />
+            )}
         </div>
       </main>
     </div>
