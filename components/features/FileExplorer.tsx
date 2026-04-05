@@ -65,7 +65,7 @@ export default function FileExplorer({
                 </section>
             ) : (
                 <div className="bg-amber-500/10 border border-amber-900/30 p-5 md:p-6 rounded-xl mb-6 md:mb-8 text-center shadow-md">
-                    <p className="text-amber-500 text-xs font-bold uppercase tracking-widest">Node Locked by {currentFolder?.owner_username}.</p>
+                    <p className="text-amber-500 text-xs font-bold uppercase tracking-widest">Folder Is Locked by {currentFolder?.owner_username}.</p>
                 </div>
             )}
 
