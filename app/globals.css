@@ -24,3 +24,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Custom Global Scrollbars for Webkit (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px; /* This handles horizontal scrollbars, like your friends list */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #222;
+  border-radius: 9999px; /* Fully rounded edges */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #444;
+}

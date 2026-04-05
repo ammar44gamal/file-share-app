@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react';
+import { supabase } from '../../lib/supabase';
 import FileThumbnail from '../ui/FileThumbnail';
 
 export default function FileExplorer({
@@ -7,6 +9,18 @@ export default function FileExplorer({
     isPublic, setIsPublic, filesList, formatBytes, handleDownload, user, canManageFolder,
     toggleFilePrivacy, handleDeleteFile
 }: any) {
+    
+    // NEW: State to handle the full-screen image preview
+    const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
+
+    // NEW: Function to generate a secure URL and open the Lightbox
+    const handlePreview = async (path: string, name: string) => {
+        const { data } = await supabase.storage.from('user-files').createSignedUrl(path, 3600);
+        if (data?.signedUrl) {
+            setPreviewData({ url: data.signedUrl, name });
+        }
+    };
+
     return (
         <>
             {!isLockedForUser ? (
@@ -15,21 +29,17 @@ export default function FileExplorer({
                     <div className="flex flex-col sm:flex-row items-center gap-3 md:gap-4">
                         <div className="flex-1 flex flex-col sm:flex-row items-center gap-3 w-full">
                             
-                            {/* CHANGED: Custom Drag-and-Drop Wrapper */}
                             <div className="flex-1 relative w-full flex items-center gap-3 border border-dashed border-[#444] bg-black/40 hover:bg-black/80 rounded-lg p-1.5 transition group">
-                                {/* The invisible native input stretched over the whole box */}
                                 <input 
                                     type="file" 
                                     ref={fileInputRef} 
                                     onChange={e => setFile(e.target.files?.[0] || null)} 
                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" 
-                                    title="" // Removes the default browser tooltip
+                                    title=""
                                 />
-                                {/* Our custom fake button */}
                                 <div className="bg-black border border-[#333] text-white text-xs px-4 py-2 rounded-md font-medium group-hover:bg-white group-hover:text-black transition">
                                     Choose File
                                 </div>
-                                {/* Our custom dynamic text */}
                                 <span className="text-xs text-[#888] truncate flex-1 pr-2">
                                     {file ? file.name : "No file chosen (you can drag & drop here)"}
                                 </span>
@@ -51,32 +61,73 @@ export default function FileExplorer({
             )}
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-5">
-            {filesList.map((f: any) => (
-                <div key={f.id} className="group bg-[#080808] p-4 md:p-5 rounded-xl border border-[#222] hover:border-white transition-all relative shadow-lg hover:shadow-2xl">
-                <div className="absolute top-3 right-3"><span className={`text-[7px] md:text-[8px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-900/50' : 'bg-amber-500/10 text-amber-500 border-amber-900/50'}`}>{f.is_public ? 'Public' : 'Private'}</span></div>
-                
-                <div className="flex flex-col h-full">
-                    <div className="flex justify-between items-start mb-3 pt-1">
-                        <FileThumbnail path={f.storage_path} fileName={f.file_name} />
-                    </div>
+            {filesList.map((f: any) => {
+                // Check if the file is an image based on its extension
+                const isImage = f.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+
+                return (
+                    <div key={f.id} className="group bg-[#080808] p-4 md:p-5 rounded-xl border border-[#222] hover:border-white transition-all relative shadow-lg hover:shadow-2xl">
+                    <div className="absolute top-3 right-3"><span className={`text-[7px] md:text-[8px] font-bold px-1.5 py-0.5 rounded border uppercase tracking-widest ${f.is_public ? 'bg-green-500/10 text-green-500 border-green-900/50' : 'bg-amber-500/10 text-amber-500 border-amber-900/50'}`}>{f.is_public ? 'Public' : 'Private'}</span></div>
                     
-                    <h4 className="font-bold text-xs md:text-sm truncate mb-1 text-slate-200 mt-1" title={f.file_name}>{f.file_name}</h4>
-                    <div className="flex items-center justify-between text-[9px] font-bold text-[#444] uppercase mb-3"><span className="truncate pr-2">{f.owner_username}</span><span className="shrink-0 text-[#666]">{formatBytes(f.file_size)}</span></div>
-                    
-                    <div className="mt-auto pt-3 border-t border-[#222] flex gap-1.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all duration-300">
-                        <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-1.5 md:py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm" title="Download">💾</button>
+                    <div className="flex flex-col h-full">
+                        <div className="flex justify-between items-start mb-3 pt-1">
+                            <FileThumbnail path={f.storage_path} fileName={f.file_name} />
+                        </div>
                         
-                        {(user.id === f.user_id || canManageFolder) && (
-                            <>
-                            <button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`flex-1 py-1.5 md:py-2 border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm ${f.is_public ? 'text-blue-900 hover:bg-blue-900/20' : 'text-amber-900 hover:bg-amber-900/20'}`} title={f.is_public ? "Make Private" : "Make Public"}>{f.is_public ? '🌐' : '🔒'}</button>
-                            <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="flex-1 py-1.5 md:py-2 border border-[#222] rounded flex justify-center hover:text-red-500 hover:border-red-900/50 hover:bg-red-500/10 transition text-xs text-[#444] shadow-sm" title="Delete">🗑️</button>
-                            </>
-                        )}
+                        <h4 className="font-bold text-xs md:text-sm truncate mb-1 text-slate-200 mt-1" title={f.file_name}>{f.file_name}</h4>
+                        <div className="flex items-center justify-between text-[9px] font-bold text-[#444] uppercase mb-3"><span className="truncate pr-2">{f.owner_username}</span><span className="shrink-0 text-[#666]">{formatBytes(f.file_size)}</span></div>
+                        
+                        <div className="mt-auto pt-3 border-t border-[#222] flex gap-1.5 opacity-100 md:opacity-0 group-hover:opacity-100 transition-all duration-300">
+                            
+                            {/* NEW: View Button (Only renders if the file is an image) */}
+                            {isImage && (
+                                <button onClick={() => handlePreview(f.storage_path, f.file_name)} className="flex-1 py-1.5 md:py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm" title="View Image">👁️</button>
+                            )}
+
+                            <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-1.5 md:py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm" title="Download">💾</button>
+                            
+                            {(user.id === f.user_id || canManageFolder) && (
+                                <>
+                                <button onClick={() => toggleFilePrivacy(f.id, f.is_public)} className={`flex-1 py-1.5 md:py-2 border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm ${f.is_public ? 'text-blue-900 hover:bg-blue-900/20' : 'text-amber-900 hover:bg-amber-900/20'}`} title={f.is_public ? "Make Private" : "Make Public"}>{f.is_public ? '🌐' : '🔒'}</button>
+                                <button onClick={() => handleDeleteFile(f.id, f.storage_path)} className="flex-1 py-1.5 md:py-2 border border-[#222] rounded flex justify-center hover:text-red-500 hover:border-red-900/50 hover:bg-red-500/10 transition text-xs text-[#444] shadow-sm" title="Delete">🗑️</button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    </div>
+                );
+            })}
+            </div>
+
+            {/* NEW: Full-Screen Image Lightbox */}
+            {previewData && (
+                <div 
+                    className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" 
+                    onClick={() => setPreviewData(null)}
+                >
+                    {/* Close Button */}
+                    <button 
+                        className="absolute top-6 right-6 text-white bg-[#222] border border-[#444] hover:bg-white hover:text-black rounded-full w-10 h-10 flex items-center justify-center font-bold transition shadow-lg z-10" 
+                        onClick={() => setPreviewData(null)}
+                        title="Close Preview"
+                    >
+                        ✕
+                    </button>
+                    
+                    {/* Image */}
+                    <img 
+                        src={previewData.url} 
+                        alt={previewData.name} 
+                        className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl border border-[#333] cursor-default" 
+                        onClick={(e) => e.stopPropagation()} 
+                    />
+                    
+                    {/* Floating Title Tag */}
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111] border border-[#333] text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-lg pointer-events-none">
+                        {previewData.name}
                     </div>
                 </div>
-                </div>
-            ))}
-            </div>
+            )}
         </>
     );
 }
