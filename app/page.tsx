@@ -77,7 +77,6 @@ export default function DistributedFileHub() {
         fetchProfile(session.user);
       }
     });
-    // FIXED: Added : any to stop TypeScript complaining
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
@@ -108,7 +107,6 @@ export default function DistributedFileHub() {
     if (!user) return;
     const dbChannel = supabase
       .channel('realtime:messages')
-      // FIXED: Added : any to payload
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload: any) => {
         const msg = payload.new;
         if (activeChat && ((msg.sender_id === user.id && msg.receiver_id === activeChat.friend_id) || (msg.sender_id === activeChat.friend_id && msg.receiver_id === user.id))) {
@@ -119,7 +117,6 @@ export default function DistributedFileHub() {
             else checkUnreadMessages();
         }
       })
-      // FIXED: Added : any to payload
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload: any) => {
         setMessages((prev) => prev.map(m => m.id === payload.new.id ? payload.new : m));
       })
@@ -132,7 +129,6 @@ export default function DistributedFileHub() {
     if (!user || !activeChat) return;
     const roomName = `chat-${[user.id, activeChat.friend_id].sort().join('-')}`;
     const typingChannel = supabase.channel(roomName)
-      // FIXED: Added : any to payload
       .on('broadcast', { event: 'typing' }, (payload: any) => {
         if (payload.payload.sender_id === activeChat.friend_id) {
             setIsTyping(true);
@@ -241,14 +237,35 @@ export default function DistributedFileHub() {
     if (user && activeChat) supabase.channel(`chat-${[user.id, activeChat.friend_id].sort().join('-')}`).send({ type: 'broadcast', event: 'typing', payload: { sender_id: user.id } });
   };
 
+  // ====================================================================
+  // THE FIX: Explicit MIME Type Detection for iOS Safari
+  // ====================================================================
   const startRecording = async () => {
       try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          const mediaRecorder = new MediaRecorder(stream);
+          
+          // 1. Force the browser to tell us what it actually supports
+          let explicitMimeType = '';
+          let ext = 'webm';
+
+          if (MediaRecorder.isTypeSupported('audio/mp4')) {
+              explicitMimeType = 'audio/mp4';
+              ext = 'mp4'; // iOS Safari Native
+          } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+              explicitMimeType = 'audio/webm';
+              ext = 'webm'; // Chrome Native
+          } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+              explicitMimeType = 'audio/ogg';
+              ext = 'ogg'; // Firefox Native
+          }
+
+          // 2. Initialize the recorder with the forced format
+          const options = explicitMimeType ? { mimeType: explicitMimeType } : undefined;
+          const mediaRecorder = new MediaRecorder(stream, options);
+          
           mediaRecorderRef.current = mediaRecorder;
           audioChunksRef.current = [];
           
-          // FIXED: Added : any to e
           mediaRecorder.ondataavailable = (e: any) => { 
               if (e.data.size > 0) audioChunksRef.current.push(e.data); 
           };
@@ -256,27 +273,19 @@ export default function DistributedFileHub() {
           mediaRecorder.onstop = async () => {
               if (audioChunksRef.current.length === 0) return;
               
-              const actualMimeType = mediaRecorder.mimeType || 'audio/webm';
-              
-              let ext = 'webm';
-              if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) {
-                  ext = 'mp4';
-              } else if (actualMimeType.includes('ogg')) {
-                  ext = 'ogg';
-              } else if (actualMimeType.includes('aac')) {
-                  ext = 'aac'; 
-              }
-
               const fileName = `Voice Note.${ext}`;
               const filePath = `chat-audio-${Date.now()}-${Math.random().toString(36).substring(2,9)}.${ext}`;
               
-              const audioFile = new File(
-                  [new Blob(audioChunksRef.current, { type: actualMimeType })], 
-                  fileName, 
-                  { type: actualMimeType }
-              );
+              // 3. Create the Blob and File using the strict MIME type
+              // This guarantees Supabase tags it correctly in the database!
+              const audioBlob = explicitMimeType 
+                  ? new Blob(audioChunksRef.current, { type: explicitMimeType })
+                  : new Blob(audioChunksRef.current);
+                  
+              const audioFile = new File([audioBlob], fileName, { type: explicitMimeType || 'audio/mp4' });
               
               const { error: uploadError } = await supabase.storage.from('user-files').upload(filePath, audioFile);
+              
               if (!uploadError && user && activeChat) {
                   await supabase.from('messages').insert([{ 
                       sender_id: user.id, 
@@ -295,6 +304,7 @@ export default function DistributedFileHub() {
           showAlert("Microphone Error", "Could not access microphone."); 
       }
   };
+  // ====================================================================
 
   const stopRecordingAndSend = () => { if (mediaRecorderRef.current && isRecording) { mediaRecorderRef.current.stop(); setIsRecording(false); } };
   const cancelRecording = () => {
