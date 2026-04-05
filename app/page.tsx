@@ -714,9 +714,9 @@ export default function DistributedFileHub() {
                     <p className="text-sm text-[#888] mb-6">{modal.message}</p>
                     <button 
                         onClick={() => setModal({ ...modal, show: false })} 
-                        className={`w-full py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${modal.title === "Success" || modal.title === "Notice" ? "bg-white text-black hover:bg-[#ccc]" : "bg-red-600 text-white hover:bg-red-700"}`}
+                        className={`w-full py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${!modal.title.toLowerCase().includes("error") ? "bg-white text-black hover:bg-[#ccc]" : "bg-red-600 text-white hover:bg-red-700"}`}
                     >
-                        {modal.title === "Success" || modal.title === "Notice" ? "OK" : "Try Again"}
+                        {!modal.title.toLowerCase().includes("error") ? "OK" : "Try Again"}
                     </button>
                 </div>
             </div>
@@ -757,10 +757,14 @@ export default function DistributedFileHub() {
                     <button onClick={() => {
                         const retryAction = modal.onRetry; const confirmAction = modal.onConfirm; const currentInput = modalInput;
                         setModal({ ...modal, show: false });
-                        if ((modal.title.includes("Error") || modal.title === "Database Error") && retryAction) setTimeout(() => retryAction(), 100);
+                        if (modal.title.toLowerCase().includes("error") && retryAction) setTimeout(() => retryAction(), 100);
                         else if (modal.isPrompt && confirmAction) confirmAction(currentInput);
-                    }} className={`flex-1 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${modal.title.includes("Error") ? "bg-red-600 text-white" : "bg-white text-black"}`}>{modal.title.includes("Error") ? "Try Again" : "Confirm"}</button>
-                    <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 border border-[#333] py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest text-[#444] hover:text-white">Cancel</button>
+                    }} className={`flex-1 py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest transition-colors ${modal.title.toLowerCase().includes("error") ? "bg-red-600 text-white hover:bg-red-700" : "bg-white text-black hover:bg-[#ccc]"}`}>
+                        {modal.title.toLowerCase().includes("error") ? "Try Again" : modal.isPrompt ? "Confirm" : "OK"}
+                    </button>
+                    {(modal.isPrompt || modal.title.toLowerCase().includes("error")) && (
+                        <button onClick={() => setModal({ ...modal, show: false })} className="flex-1 border border-[#333] py-3 rounded-lg font-bold text-[10px] uppercase tracking-widest text-[#444] hover:text-white">Cancel</button>
+                    )}
                 </div>
             </div>
         </div>
@@ -891,7 +895,6 @@ export default function DistributedFileHub() {
                                         <h4 className="font-bold text-sm truncate mb-1 text-slate-200 mt-2" title={f.file_name}>{f.file_name}</h4>
                                         <div className="flex items-center justify-between text-[10px] font-bold text-[#444] uppercase mb-4"><span className="truncate pr-2">{f.owner_username}</span><span className="shrink-0 text-[#666]">{formatBytes(f.file_size)}</span></div>
                                         
-                                        {/* NEW: ONLY RENDERING THE DOWNLOAD BUTTON IN GLOBAL SEARCH */}
                                         <div className="mt-auto pt-4 border-t border-[#222] flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
                                             <button onClick={() => handleDownload(f.storage_path, f.file_name)} className="flex-1 py-2 bg-[#111] border border-[#222] rounded flex justify-center hover:text-white hover:border-[#444] transition text-xs shadow-sm">💾</button>
                                         </div>
