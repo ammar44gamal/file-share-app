@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 
 import NetworkBackground from '../ui/NetworkBackground';
@@ -16,8 +16,8 @@ export default function ChatInterface({
 }: any) {
 
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // CHANGED: Smarter scroll logic that ONLY scrolls the chat container, not the whole page!
     useEffect(() => {
         setTimeout(() => {
             if (chatScrollRef.current) {
@@ -80,7 +80,9 @@ export default function ChatInterface({
                                     ) : (
                                         messages.map((msg: any) => {
                                             const isMine = msg.sender_id === user.id;
-                                            const isVoiceNote = msg.file_name === 'Voice Note.webm';
+                                            
+                                            // CHANGED: We now check if the filename STARTS with 'Voice Note' to support both .webm and .mp4
+                                            const isVoiceNote = msg.file_name && msg.file_name.startsWith('Voice Note');
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
                                             return (
@@ -140,6 +142,8 @@ export default function ChatInterface({
                                             </div>
                                         </div>
                                     )}
+
+                                    <div ref={messagesEndRef} />
                                 </div>
 
                                 {/* CHAT INPUT FORM */}
