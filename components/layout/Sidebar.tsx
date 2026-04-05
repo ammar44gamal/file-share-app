@@ -1,5 +1,7 @@
 'use client';
 
+import { useState, useEffect } from 'react';
+
 export default function Sidebar({
     isSidebarOpen, setIsSidebarOpen, setSelectedFolder, setViewingAdminPanel, setViewingComms,
     setViewingSearch, selectedFolder, viewingAdminPanel, viewingComms, viewingSearch, unreadSenders,
@@ -7,6 +9,83 @@ export default function Sidebar({
     editingFolderName, setEditingFolderName, handleRenameFolder, newFolderName, setNewFolderName,
     folderIsPublic, setFolderIsPublic, createFolder
 }: any) {
+
+    // NEW: PINNED FOLDERS STATE (Stored locally for speed and security)
+    const [pinnedFolders, setPinnedFolders] = useState<string[]>([]);
+
+    useEffect(() => {
+        const savedPins = localStorage.getItem('filehub_pins');
+        if (savedPins) setPinnedFolders(JSON.parse(savedPins));
+    }, []);
+
+    const togglePin = (folderId: string) => {
+        let updatedPins = [];
+        if (pinnedFolders.includes(folderId)) {
+            updatedPins = pinnedFolders.filter(id => id !== folderId);
+        } else {
+            updatedPins = [...pinnedFolders, folderId];
+        }
+        setPinnedFolders(updatedPins);
+        localStorage.setItem('filehub_pins', JSON.stringify(updatedPins));
+    };
+
+    // CATEGORIZE AND SORT FOLDERS
+    const myFolders = folders.filter((f: any) => f.user_id === user?.id);
+    const otherFolders = folders.filter((f: any) => f.user_id !== user?.id);
+
+    const sortFolders = (list: any[]) => {
+        return [...list].sort((a, b) => {
+            const aPinned = pinnedFolders.includes(a.id);
+            const bPinned = pinnedFolders.includes(b.id);
+            if (aPinned && !bPinned) return -1;
+            if (!aPinned && bPinned) return 1;
+            return a.name.localeCompare(b.name);
+        });
+    };
+
+    // REUSABLE UI BLOCK FOR FOLDER ITEMS
+    const renderFolderItem = (folder: any) => (
+        <div key={folder.id} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white group'}`}>
+            
+            {editingFolderId === folder.id ? (
+                <input
+                    autoFocus
+                    type="text"
+                    className="bg-black border border-[#444] text-white px-2 py-1 rounded w-full outline-none text-xs font-normal"
+                    value={editingFolderName}
+                    onChange={(e) => setEditingFolderName(e.target.value)}
+                    onBlur={() => handleRenameFolder(folder.id, editingFolderName)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRenameFolder(folder.id, editingFolderName);
+                        if (e.key === 'Escape') setEditingFolderId(null);
+                    }}
+                />
+            ) : (
+                <span 
+                    className="truncate pr-4 cursor-pointer flex-1 py-1" 
+                    onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false); setIsSidebarOpen(false);}}
+                >
+                    {pinnedFolders.includes(folder.id) ? '📌 ' : '📂 '} {folder.name}
+                </span>
+            )}
+
+            <div className="flex items-center gap-3 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                {/* NEW PIN BUTTON */}
+                <span onClick={(e) => { e.stopPropagation(); togglePin(folder.id); }} className={`text-[10px] cursor-pointer p-1 transition ${pinnedFolders.includes(folder.id) ? 'text-amber-500' : 'hover:text-amber-500'}`} title={pinnedFolders.includes(folder.id) ? "Unpin Folder" : "Pin Folder"}>
+                    {pinnedFolders.includes(folder.id) ? '📍' : '📌'}
+                </span>
+                
+                {/* EDIT & DELETE BUTTONS (Only if owner or admin) */}
+                {(folder.user_id === user?.id || isAdmin) && editingFolderId !== folder.id && (
+                    <>
+                        <span onClick={(e) => { e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }} className="text-[10px] hover:text-blue-500 cursor-pointer p-1" title="Rename">✏️</span>
+                        <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer p-1" title="Delete">✕</span>
+                    </>
+                )}
+            </div>
+        </div>
+    );
+
     return (
         <>
             {/* MOBILE OVERLAY */}
@@ -40,40 +119,21 @@ export default function Sidebar({
                         <button onClick={() => {setSelectedFolder(null); setViewingComms(false); setViewingSearch(false); setViewingAdminPanel(true); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
                     )}
                     
-                    <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
-                    {folders.map((folder: any) => (
-                        <div key={folder.id} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white group'}`}>
-                        
-                        {editingFolderId === folder.id ? (
-                            <input
-                                autoFocus
-                                type="text"
-                                className="bg-black border border-[#444] text-white px-2 py-1 rounded w-full outline-none text-xs font-normal"
-                                value={editingFolderName}
-                                onChange={(e) => setEditingFolderName(e.target.value)}
-                                onBlur={() => handleRenameFolder(folder.id, editingFolderName)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleRenameFolder(folder.id, editingFolderName);
-                                    if (e.key === 'Escape') setEditingFolderId(null);
-                                }}
-                            />
-                        ) : (
-                            <span 
-                                className="truncate pr-4 cursor-pointer flex-1 py-1" 
-                                onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false); setIsSidebarOpen(false);}}
-                            >
-                                📂 {folder.name}
-                            </span>
-                        )}
+                    {/* YOUR FOLDERS SECTION */}
+                    {myFolders.length > 0 && (
+                        <>
+                            <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Your Folders</div>
+                            {sortFolders(myFolders).map(folder => renderFolderItem(folder))}
+                        </>
+                    )}
 
-                        {(folder.user_id === user?.id || isAdmin) && editingFolderId !== folder.id && (
-                            <div className="flex items-center gap-3 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                                <span onClick={(e) => { e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }} className="text-[10px] hover:text-blue-500 cursor-pointer p-1" title="Rename">✏️</span>
-                                <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer p-1" title="Delete">✕</span>
-                            </div>
-                        )}
-                        </div>
-                    ))}
+                    {/* COLLECTIONS (OTHER USERS' PUBLIC FOLDERS) SECTION */}
+                    {otherFolders.length > 0 && (
+                        <>
+                            <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
+                            {sortFolders(otherFolders).map(folder => renderFolderItem(folder))}
+                        </>
+                    )}
                 </nav>
 
                 <div className="mt-auto pt-6 border-t border-[#222]">
