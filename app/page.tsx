@@ -177,7 +177,12 @@ export default function DistributedFileHub() {
     setProfileName(data?.username || currentUser.email.split('@')[0]);
   };
   const fetchAdminStats = async () => {
-    const { data } = await supabase.from('admin_user_stats').select('*');
+    const { data } = await supabase
+        .from('admin_user_stats')
+        .select('*')
+        // This sorts by the newest login time first, and puts users who have never logged in at the very bottom
+        .order('last_login', { ascending: false, nullsFirst: false }); 
+        
     setAdminUserList(data || []);
   };
   const fetchFolders = async () => {
