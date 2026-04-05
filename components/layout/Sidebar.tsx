@@ -45,7 +45,6 @@ export default function Sidebar({
 
     // REUSABLE UI BLOCK FOR FOLDER ITEMS
     const renderFolderItem = (folder: any) => {
-        // Check if this specific folder is the one currently being viewed
         const isActive = selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch;
         
         return (
@@ -75,12 +74,10 @@ export default function Sidebar({
                 )}
 
                 <div className={`flex items-center gap-2 transition-opacity shrink-0 ${isActive ? 'opacity-100' : 'opacity-100 md:opacity-0 group-hover:opacity-100'}`}>
-                    {/* PIN BUTTON */}
                     <span onClick={(e) => { e.stopPropagation(); togglePin(folder.id); }} className={`text-[10px] cursor-pointer p-1 transition ${pinnedFolders.includes(folder.id) ? 'text-amber-500' : 'hover:text-amber-500'}`} title={pinnedFolders.includes(folder.id) ? "Unpin Folder" : "Pin Folder"}>
                         {pinnedFolders.includes(folder.id) ? '📍' : '📌'}
                     </span>
                     
-                    {/* EDIT & DELETE BUTTONS (Only if owner or admin) */}
                     {(folder.user_id === user?.id || isAdmin) && editingFolderId !== folder.id && (
                         <>
                             <span onClick={(e) => { e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }} className="text-[10px] hover:text-blue-500 cursor-pointer p-1" title="Rename">✏️</span>
@@ -94,12 +91,10 @@ export default function Sidebar({
 
     return (
         <>
-            {/* MOBILE OVERLAY */}
             {isSidebarOpen && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity" onClick={() => setIsSidebarOpen(false)} />
             )}
 
-            {/* SIDEBAR (RESPONSIVE) */}
             <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out z-50 w-80 bg-[#0a0a0a] md:bg-black/90 border-r border-[#222] p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.5)] md:shadow-none`}>
                 <div className="flex items-center justify-between mb-12">
                     <div className="flex items-center gap-3">
@@ -109,8 +104,8 @@ export default function Sidebar({
                     <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-[#888] hover:text-white text-xl">✕</button>
                 </div>
                 
-                <nav className="flex-1 space-y-1 overflow-y-auto pr-2 scrollbar-hide">
-                    {/* CHANGED: Dashboard is now Main Dashboard with a house emoji */}
+                {/* CHANGED: Replaced default scrollbar with custom ultra-thin dark scrollbar styling */}
+                <nav className="flex-1 space-y-1 overflow-y-auto pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-[#222] [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-[#444] transition-colors">
                     <button onClick={() => {setSelectedFolder(null); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition flex items-center justify-between ${!selectedFolder && !viewingAdminPanel && !viewingComms && !viewingSearch ? 'bg-[#111] border border-[#333] text-white' : 'text-[#888] hover:text-white'}`}>
                         <span>🏠 Main Dashboard</span>
                     </button>
@@ -128,7 +123,6 @@ export default function Sidebar({
                         <button onClick={() => {setSelectedFolder(null); setViewingComms(false); setViewingSearch(false); setViewingAdminPanel(true); setIsSidebarOpen(false);}} className={`w-full text-left px-4 py-2 rounded-lg text-sm transition mt-4 ${viewingAdminPanel ? 'bg-blue-600 text-white shadow-lg' : 'text-blue-500 hover:text-white border border-blue-900/30'}`}>🛠️ Admin</button>
                     )}
                     
-                    {/* YOUR FOLDERS SECTION */}
                     {myFolders.length > 0 && (
                         <>
                             <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Your Folders</div>
@@ -136,7 +130,6 @@ export default function Sidebar({
                         </>
                     )}
 
-                    {/* COLLECTIONS (OTHER USERS' PUBLIC FOLDERS) SECTION */}
                     {otherFolders.length > 0 && (
                         <>
                             <div className="pt-6 pb-2 text-[10px] font-bold text-[#444] uppercase tracking-widest">Collections</div>
