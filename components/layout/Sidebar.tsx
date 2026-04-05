@@ -10,7 +10,7 @@ export default function Sidebar({
     folderIsPublic, setFolderIsPublic, createFolder
 }: any) {
 
-    // NEW: PINNED FOLDERS STATE (Stored locally for speed and security)
+    // PINNED FOLDERS STATE
     const [pinnedFolders, setPinnedFolders] = useState<string[]>([]);
 
     useEffect(() => {
@@ -44,47 +44,53 @@ export default function Sidebar({
     };
 
     // REUSABLE UI BLOCK FOR FOLDER ITEMS
-    const renderFolderItem = (folder: any) => (
-        <div key={folder.id} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition ${selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white group'}`}>
-            
-            {editingFolderId === folder.id ? (
-                <input
-                    autoFocus
-                    type="text"
-                    className="bg-black border border-[#444] text-white px-2 py-1 rounded w-full outline-none text-xs font-normal"
-                    value={editingFolderName}
-                    onChange={(e) => setEditingFolderName(e.target.value)}
-                    onBlur={() => handleRenameFolder(folder.id, editingFolderName)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleRenameFolder(folder.id, editingFolderName);
-                        if (e.key === 'Escape') setEditingFolderId(null);
-                    }}
-                />
-            ) : (
-                <span 
-                    className="truncate pr-4 cursor-pointer flex-1 py-1" 
-                    onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false); setIsSidebarOpen(false);}}
-                >
-                    {pinnedFolders.includes(folder.id) ? '📌 ' : '📂 '} {folder.name}
-                </span>
-            )}
-
-            <div className="flex items-center gap-3 opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                {/* NEW PIN BUTTON */}
-                <span onClick={(e) => { e.stopPropagation(); togglePin(folder.id); }} className={`text-[10px] cursor-pointer p-1 transition ${pinnedFolders.includes(folder.id) ? 'text-amber-500' : 'hover:text-amber-500'}`} title={pinnedFolders.includes(folder.id) ? "Unpin Folder" : "Pin Folder"}>
-                    {pinnedFolders.includes(folder.id) ? '📍' : '📌'}
-                </span>
+    const renderFolderItem = (folder: any) => {
+        // Check if this specific folder is the one currently being viewed
+        const isActive = selectedFolder === folder.id && !viewingComms && !viewingAdminPanel && !viewingSearch;
+        
+        return (
+            <div key={folder.id} className={`w-full text-left px-4 py-2 rounded-lg text-sm flex items-center justify-between transition group ${isActive ? 'text-white font-bold bg-[#111]' : 'text-[#888] hover:text-white'}`}>
                 
-                {/* EDIT & DELETE BUTTONS (Only if owner or admin) */}
-                {(folder.user_id === user?.id || isAdmin) && editingFolderId !== folder.id && (
-                    <>
-                        <span onClick={(e) => { e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }} className="text-[10px] hover:text-blue-500 cursor-pointer p-1" title="Rename">✏️</span>
-                        <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer p-1" title="Delete">✕</span>
-                    </>
+                {editingFolderId === folder.id ? (
+                    <input
+                        autoFocus
+                        type="text"
+                        className="bg-black border border-[#444] text-white px-2 py-1 rounded w-full outline-none text-xs font-normal"
+                        value={editingFolderName}
+                        onChange={(e) => setEditingFolderName(e.target.value)}
+                        onBlur={() => handleRenameFolder(folder.id, editingFolderName)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameFolder(folder.id, editingFolderName);
+                            if (e.key === 'Escape') setEditingFolderId(null);
+                        }}
+                    />
+                ) : (
+                    <span 
+                        className="truncate pr-2 cursor-pointer flex-1 py-1" 
+                        onClick={() => {setSelectedFolder(folder.id); setViewingAdminPanel(false); setViewingComms(false); setViewingSearch(false); setIsSidebarOpen(false);}}
+                        title={folder.name}
+                    >
+                        {pinnedFolders.includes(folder.id) ? '📍 ' : '📂 '} {folder.name}
+                    </span>
                 )}
+
+                <div className={`flex items-center gap-2 transition-opacity shrink-0 ${isActive ? 'opacity-100' : 'opacity-100 md:opacity-0 group-hover:opacity-100'}`}>
+                    {/* PIN BUTTON */}
+                    <span onClick={(e) => { e.stopPropagation(); togglePin(folder.id); }} className={`text-[10px] cursor-pointer p-1 transition ${pinnedFolders.includes(folder.id) ? 'text-amber-500' : 'hover:text-amber-500'}`} title={pinnedFolders.includes(folder.id) ? "Unpin Folder" : "Pin Folder"}>
+                        {pinnedFolders.includes(folder.id) ? '📍' : '📌'}
+                    </span>
+                    
+                    {/* EDIT & DELETE BUTTONS (Only if owner or admin) */}
+                    {(folder.user_id === user?.id || isAdmin) && editingFolderId !== folder.id && (
+                        <>
+                            <span onClick={(e) => { e.stopPropagation(); setEditingFolderId(folder.id); setEditingFolderName(folder.name); }} className="text-[10px] hover:text-blue-500 cursor-pointer p-1" title="Rename">✏️</span>
+                            <span onClick={(e) => handleFolderDelete(e, folder.id)} className="text-[10px] hover:text-red-500 cursor-pointer p-1" title="Delete">✕</span>
+                        </>
+                    )}
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     return (
         <>
@@ -93,8 +99,8 @@ export default function Sidebar({
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity" onClick={() => setIsSidebarOpen(false)} />
             )}
 
-            {/* SIDEBAR (RESPONSIVE) */}
-            <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out z-50 w-64 bg-[#0a0a0a] md:bg-black/90 border-r border-[#222] p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.5)] md:shadow-none`}>
+            {/* SIDEBAR (RESPONSIVE - Increased width to w-72) */}
+            <aside className={`fixed inset-y-0 left-0 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0 transition-transform duration-300 ease-in-out z-50 w-72 bg-[#0a0a0a] md:bg-black/90 border-r border-[#222] p-6 flex flex-col shadow-[4px_0_24px_rgba(0,0,0,0.5)] md:shadow-none`}>
                 <div className="flex items-center justify-between mb-12">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-white rounded flex items-center justify-center text-black font-black">F</div>
