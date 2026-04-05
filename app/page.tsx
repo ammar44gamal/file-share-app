@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
-// Import our cleanly separated components
 import NetworkBackground from '../components/ui/NetworkBackground';
 import Modal from '../components/ui/Modal';
 import AccountMenu from '../components/layout/AccountMenu';
@@ -15,7 +14,6 @@ import FileExplorer from '../components/features/FileExplorer';
 import ChatInterface from '../components/features/ChatInterface';
 
 export default function DistributedFileHub() {
-  // CORE STATE
   const [user, setUser] = useState<any>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,24 +23,18 @@ export default function DistributedFileHub() {
   const [profileName, setProfileName] = useState('User');
   const [isAdmin, setIsAdmin] = useState(false);
   
-  // FILE/FOLDER STATE
   const [filesList, setFilesList] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [folderSizes, setFolderSizes] = useState<Record<string, number>>({}); 
   const [newFolderName, setNewFolderName] = useState('');
   const [folderIsPublic, setFolderIsPublic] = useState(true);
   const [isPublic, setIsPublic] = useState(true);
   const [uploading, setUploading] = useState(false);
-  
-  // State now holds an array of files instead of a single file
   const [files, setFiles] = useState<File[]>([]);
 
-  // FOLDER RENAMING STATE
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [editingFolderName, setEditingFolderName] = useState('');
 
-  // NAVIGATION & UI STATE
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [adminUserList, setAdminUserList] = useState<any[]>([]);
   const [viewingAdminPanel, setViewingAdminPanel] = useState(false);
@@ -50,18 +42,15 @@ export default function DistributedFileHub() {
   const [viewingSearch, setViewingSearch] = useState(false); 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // GLOBAL SEARCH STATE
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [globalSearchResults, setGlobalSearchResults] = useState<any[]>([]);
 
-  // COMMS / SOCIAL STATE
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [friends, setFriends] = useState<any[]>([]);
   const [activeChat, setActiveChat] = useState<any>(null);
   
-  // CHAT MESSAGES & NOTIFICATIONS STATE
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatFile, setChatFile] = useState<File | null>(null);
@@ -69,7 +58,6 @@ export default function DistributedFileHub() {
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // VOICE RECORDING STATE
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -82,7 +70,6 @@ export default function DistributedFileHub() {
     show: boolean, title: string, message: string, onConfirm?: (val: string) => void, onRetry?: () => void, isPrompt?: boolean
   }>({ show: false, title: '', message: '', isPrompt: false });
 
-  // 1. SESSION INITIALIZATION
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
@@ -90,7 +77,8 @@ export default function DistributedFileHub() {
         fetchProfile(session.user);
       }
     });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    // FIXED: Added : any to stop TypeScript complaining
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) fetchProfile(currentUser);
@@ -99,7 +87,6 @@ export default function DistributedFileHub() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. DATA SYNCHRONIZATION
   useEffect(() => {
     if (user) {
       fetchFolders();
@@ -117,12 +104,12 @@ export default function DistributedFileHub() {
     }
   }, [activeChat]);
 
-  // REALTIME SUPABASE LISTENER
   useEffect(() => {
     if (!user) return;
     const dbChannel = supabase
       .channel('realtime:messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+      // FIXED: Added : any to payload
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload: any) => {
         const msg = payload.new;
         if (activeChat && ((msg.sender_id === user.id && msg.receiver_id === activeChat.friend_id) || (msg.sender_id === activeChat.friend_id && msg.receiver_id === user.id))) {
           setMessages((prev) => [...prev, msg]);
@@ -132,7 +119,8 @@ export default function DistributedFileHub() {
             else checkUnreadMessages();
         }
       })
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload) => {
+      // FIXED: Added : any to payload
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'messages' }, (payload: any) => {
         setMessages((prev) => prev.map(m => m.id === payload.new.id ? payload.new : m));
       })
       .subscribe();
@@ -140,12 +128,12 @@ export default function DistributedFileHub() {
     return () => { supabase.removeChannel(dbChannel); };
   }, [user, activeChat, viewingComms]);
 
-  // Typing Indicator Listener
   useEffect(() => {
     if (!user || !activeChat) return;
     const roomName = `chat-${[user.id, activeChat.friend_id].sort().join('-')}`;
     const typingChannel = supabase.channel(roomName)
-      .on('broadcast', { event: 'typing' }, (payload) => {
+      // FIXED: Added : any to payload
+      .on('broadcast', { event: 'typing' }, (payload: any) => {
         if (payload.payload.sender_id === activeChat.friend_id) {
             setIsTyping(true);
             if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
@@ -156,7 +144,6 @@ export default function DistributedFileHub() {
     return () => { supabase.removeChannel(typingChannel); };
   }, [user, activeChat]);
 
-  // 3. UI HELPERS
   const showAlert = (title: string, message: string, retryAction?: () => void) => {
     setModal({ show: true, title, message, isPrompt: false, onRetry: retryAction });
   };
@@ -170,7 +157,6 @@ export default function DistributedFileHub() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
-  // 4. DATA FETCHING
   const fetchProfile = async (currentUser: any) => {
     const { data, error } = await supabase.from('profiles').select('username, is_admin').eq('id', currentUser.id).single();
     if (error) console.error("Profile Fetch Error:", error.message);
@@ -206,7 +192,6 @@ export default function DistributedFileHub() {
       if (!error && data) setGlobalSearchResults(data);
   };
 
-  // 5. SOCIAL / COMMS LOGIC
   const fetchSocialData = async () => {
     if (!user) return;
     const { data: fData, error } = await supabase.from('friendships').select('*').or(`requester_id.eq.${user.id},receiver_id.eq.${user.id}`);
@@ -262,21 +247,55 @@ export default function DistributedFileHub() {
           const mediaRecorder = new MediaRecorder(stream);
           mediaRecorderRef.current = mediaRecorder;
           audioChunksRef.current = [];
-          mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+          
+          // FIXED: Added : any to e
+          mediaRecorder.ondataavailable = (e: any) => { 
+              if (e.data.size > 0) audioChunksRef.current.push(e.data); 
+          };
+          
           mediaRecorder.onstop = async () => {
               if (audioChunksRef.current.length === 0) return;
-              const audioFile = new File([new Blob(audioChunksRef.current, { type: 'audio/webm' })], `Voice Note.webm`, { type: 'audio/webm' });
-              const filePath = `chat-audio-${Date.now()}-${Math.random().toString(36).substring(2,9)}.webm`;
+              
+              const actualMimeType = mediaRecorder.mimeType || 'audio/webm';
+              
+              let ext = 'webm';
+              if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) {
+                  ext = 'mp4';
+              } else if (actualMimeType.includes('ogg')) {
+                  ext = 'ogg';
+              } else if (actualMimeType.includes('aac')) {
+                  ext = 'aac'; 
+              }
+
+              const fileName = `Voice Note.${ext}`;
+              const filePath = `chat-audio-${Date.now()}-${Math.random().toString(36).substring(2,9)}.${ext}`;
+              
+              const audioFile = new File(
+                  [new Blob(audioChunksRef.current, { type: actualMimeType })], 
+                  fileName, 
+                  { type: actualMimeType }
+              );
+              
               const { error: uploadError } = await supabase.storage.from('user-files').upload(filePath, audioFile);
               if (!uploadError && user && activeChat) {
-                  await supabase.from('messages').insert([{ sender_id: user.id, receiver_id: activeChat.friend_id, content: '', file_path: filePath, file_name: 'Voice Note.webm', is_read: false }]);
+                  await supabase.from('messages').insert([{ 
+                      sender_id: user.id, 
+                      receiver_id: activeChat.friend_id, 
+                      content: '', 
+                      file_path: filePath, 
+                      file_name: fileName, 
+                      is_read: false 
+                  }]);
               }
               stream.getTracks().forEach(track => track.stop()); 
           };
           mediaRecorder.start();
           setIsRecording(true);
-      } catch (err) { showAlert("Microphone Error", "Could not access microphone."); }
+      } catch (err) { 
+          showAlert("Microphone Error", "Could not access microphone."); 
+      }
   };
+
   const stopRecordingAndSend = () => { if (mediaRecorderRef.current && isRecording) { mediaRecorderRef.current.stop(); setIsRecording(false); } };
   const cancelRecording = () => {
       if (mediaRecorderRef.current && isRecording) {
@@ -300,7 +319,6 @@ export default function DistributedFileHub() {
     else { setNewMessage(''); setChatFile(null); if (chatFileInputRef.current) chatFileInputRef.current.value = ""; }
   };
 
-  // 6. CORE ACTIONS
   const handleAuth = async () => {
     if (isSignUp) {
       if (!username) return showAlert("Notice", "Please enter a Username.");
@@ -339,18 +357,13 @@ export default function DistributedFileHub() {
       if (error) showAlert("Database Error", error.message); else { setEditingFolderId(null); fetchFolders(); }
   };
 
-  // Sequential Multi-File Upload Logic
   const handleUpload = async () => {
     if (!files || files.length === 0 || !user) return;
     setUploading(true);
-    
     try {
-      // Loop through all selected files sequentially to preserve order
       for (const currentFile of files) {
           const fileName = `${Math.random()}.${currentFile.name.split('.').pop()}`;
-          
           await supabase.storage.from('user-files').upload(fileName, currentFile);
-          
           const { error } = await supabase.from('files').insert([{ 
               file_name: currentFile.name, 
               file_size: currentFile.size, 
@@ -360,19 +373,12 @@ export default function DistributedFileHub() {
               user_id: user.id, 
               folder_id: selectedFolder 
           }]);
-          
-          if (error) {
-              showAlert("Database Error", `Error uploading ${currentFile.name}: ${error.message}`);
-          }
+          if (error) showAlert("Database Error", `Error uploading ${currentFile.name}: ${error.message}`);
       }
-      
       setFiles([]); 
       if (fileInputRef.current) fileInputRef.current.value = ""; 
       fetchFiles();
-      
-    } finally { 
-        setUploading(false); 
-    }
+    } finally { setUploading(false); }
   };
 
   const handleDownload = async (path: string, name: string) => {
@@ -404,7 +410,6 @@ export default function DistributedFileHub() {
     if (error) showAlert("Database Error", error.message); else fetchFiles();
   };
 
-  // 7. RENDER LOGIC
   const currentFolder = folders.find(f => f.id === selectedFolder);
   const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
   const isLockedForUser = selectedFolder && currentFolder?.is_locked && !canManageFolder;
@@ -448,9 +453,6 @@ export default function DistributedFileHub() {
         </div>
 
         <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-y-auto">
-            {/* Properly formatted conditional logic.
-               This removes the bad copy-paste that was throwing errors!
-            */}
             {viewingSearch ? (
                 <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
             ) : viewingComms ? (

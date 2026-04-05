@@ -33,66 +33,6 @@ export default function ChatInterface({
         }
     };
 
-    // CHANGED: The startRecording logic is now format-agnostic. 
-    // It detects Safari vs Chrome and saves the exact correct format.
-    const startRecordingVoiceNote = async () => {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const mediaRecorder = new MediaRecorder(stream);
-            mediaRecorderRef.current = mediaRecorder;
-            audioChunksRef.current = [];
-            
-            mediaRecorder.ondataavailable = (e) => { 
-                if (e.data.size > 0) audioChunksRef.current.push(e.data); 
-            };
-            
-            mediaRecorder.onstop = async () => {
-                if (audioChunksRef.current.length === 0) return;
-                
-                // 1. DETECT THE BROWSER'S TRUE NATIVE MIME TYPE
-                const actualMimeType = mediaRecorder.mimeType || 'audio/webm';
-                
-                // 2. ASSIGN THE CORRECT EXTENSION BASED ON THE MIME TYPE
-                let ext = 'webm';
-                if (actualMimeType.includes('mp4') || actualMimeType.includes('m4a')) {
-                    ext = 'mp4'; // Safari
-                } else if (actualMimeType.includes('ogg')) {
-                    ext = 'ogg'; // Firefox
-                } else if (actualMimeType.includes('aac')) {
-                    ext = 'aac'; 
-                }
-
-                const fileName = `Voice Note.${ext}`;
-                const filePath = `chat-audio-${Date.now()}-${Math.random().toString(36).substring(2,9)}.${ext}`;
-                
-                // 3. PACKAGE THE BLOB PROPERLY
-                const audioFile = new File(
-                    [new Blob(audioChunksRef.current, { type: actualMimeType })], 
-                    fileName, 
-                    { type: actualMimeType }
-                );
-                
-                const { error: uploadError } = await supabase.storage.from('user-files').upload(filePath, audioFile);
-                if (!uploadError && user && activeChat) {
-                    await supabase.from('messages').insert([{ 
-                        sender_id: user.id, 
-                        receiver_id: activeChat.friend_id, 
-                        content: '', 
-                        file_path: filePath, 
-                        file_name: fileName, 
-                        is_read: false 
-                    }]);
-                }
-                stream.getTracks().forEach(track => track.stop()); 
-            };
-            
-            mediaRecorder.start();
-            startRecording(); // Triggers the parent UI state
-        } catch (err) { 
-            console.error(err);
-        }
-    };
-
     return (
         <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative">
             
@@ -137,7 +77,6 @@ export default function ChatInterface({
                                     ) : (
                                         messages.map((msg: any) => {
                                             const isMine = msg.sender_id === user.id;
-                                            // Ensure we catch Voice Note.mp4, Voice Note.webm, Voice Note.ogg, etc.
                                             const isVoiceNote = msg.file_name && msg.file_name.startsWith('Voice Note');
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
@@ -229,8 +168,7 @@ export default function ChatInterface({
                                         </button>
                                     ) : (
                                         <>
-                                            {/* CHANGED: This button now triggers our new dynamic recording function */}
-                                            <button type="button" onClick={startRecordingVoiceNote} className="bg-[#222] text-white hover:bg-[#333] p-2 rounded-lg transition shrink-0" title="Voice Note">
+                                            <button type="button" onClick={startRecording} className="bg-[#222] text-white hover:bg-[#333] p-2 rounded-lg transition shrink-0" title="Voice Note">
                                                 🎤
                                             </button>
                                             <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-4 py-2 rounded-lg text-[9px] uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shrink-0">
