@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 
-// Import our new cleanly separated components
+// Import our cleanly separated components
 import NetworkBackground from '../components/ui/NetworkBackground';
 import Modal from '../components/ui/Modal';
 import AccountMenu from '../components/layout/AccountMenu';
@@ -396,23 +396,23 @@ export default function DistributedFileHub() {
 
         <AccountMenu {...{showAccountMenu, setShowAccountMenu, profileName, userEmail: user.email, handleChangePassword, handleLogout}} />
 
-        {/* HEADER SECTION */}
-        <div className="relative pt-20 md:pt-16 px-6 md:px-12 pb-8 border-b border-[#222]/50 bg-gradient-to-b from-[#0a0a0a] to-black shrink-0">
+        {/* COMPACT HEADER SECTION (Zoomed Out) */}
+        <div className="relative pt-16 md:pt-10 px-6 md:px-8 pb-5 md:pb-6 border-b border-[#222]/50 bg-gradient-to-b from-[#0a0a0a] to-black shrink-0">
             <NetworkBackground />
             <div className="relative z-10 pl-2 md:pl-0">
-                {viewingSearch ? <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white mb-2">Global Search</h2> 
-                : viewingComms ? <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white mb-2">Connections Log</h2> 
-                : viewingAdminPanel ? <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white mb-2">Network Registry</h2> 
+                {viewingSearch ? <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-1.5">Global Search</h2> 
+                : viewingComms ? <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-1.5">Connections Log</h2> 
+                : viewingAdminPanel ? <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-1.5">Network Registry</h2> 
                 : (
                     <>
-                        <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white mb-2 truncate max-w-[80%] md:max-w-full">{currentFolder ? currentFolder.name : 'Root Explorer'}</h2>
+                        <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-1.5 truncate max-w-[80%] md:max-w-full">{currentFolder ? currentFolder.name : 'Root Explorer'}</h2>
                         {currentFolder && (
-                            <div className="mt-4 flex flex-wrap items-center gap-3 md:gap-4">
-                                <p className="text-[#888] text-xs md:text-sm italic">Owner: <span className="text-white font-bold">{currentFolder.owner_username}</span></p>
+                            <div className="mt-3 flex flex-wrap items-center gap-3 md:gap-4">
+                                <p className="text-[#888] text-xs italic">Owner: <span className="text-white font-bold">{currentFolder.owner_username}</span></p>
                                 {canManageFolder && (
                                     <div className="flex gap-2 md:gap-4 md:border-l border-[#333] md:pl-4">
-                                        <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_public', currentFolder.is_public)} className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 md:px-3 rounded border transition hover:opacity-80 ${currentFolder.is_public ? 'border-green-900 bg-green-500/10 text-green-500' : 'border-red-900 bg-red-500/10 text-red-500'}`}>{currentFolder.is_public ? '🌐 Public' : '🔒 Private'}</button>
-                                        <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_locked', currentFolder.is_locked)} className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 md:px-3 rounded border transition hover:opacity-80 ${currentFolder.is_locked ? 'border-amber-900 bg-amber-500/10 text-amber-500' : 'border-[#333] bg-[#111] text-[#888]'}`}>{currentFolder.is_locked ? '🚫 Locked' : '🔓 Unlocked'}</button>
+                                        <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_public', currentFolder.is_public)} className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 md:px-2.5 rounded border transition hover:opacity-80 ${currentFolder.is_public ? 'border-green-900 bg-green-500/10 text-green-500' : 'border-red-900 bg-red-500/10 text-red-500'}`}>{currentFolder.is_public ? '🌐 Public' : '🔒 Private'}</button>
+                                        <button onClick={() => toggleFolderStatus(currentFolder.id, 'is_locked', currentFolder.is_locked)} className={`text-[9px] font-bold uppercase tracking-widest px-2 py-1 md:px-2.5 rounded border transition hover:opacity-80 ${currentFolder.is_locked ? 'border-amber-900 bg-amber-500/10 text-amber-500' : 'border-[#333] bg-[#111] text-[#888]'}`}>{currentFolder.is_locked ? '🚫 Locked' : '🔓 Unlocked'}</button>
                                     </div>
                                 )}
                             </div>
@@ -422,8 +422,8 @@ export default function DistributedFileHub() {
             </div>
         </div>
 
-        {/* MAIN CONTENT ROUTING */}
-        <div className="p-4 md:p-12 flex-1 overflow-y-auto">
+        {/* MAIN CONTENT ROUTING (Reduced padding to 'p-4 md:p-6 lg:p-8') */}
+        <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-y-auto">
             {viewingSearch ? <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
             : viewingComms ? <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef}} />
             : viewingAdminPanel ? <AdminPanel adminUserList={adminUserList} />
