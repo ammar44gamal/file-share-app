@@ -40,14 +40,12 @@ export default function ChatInterface({
         }, 10);
     }, [messages, activeChat, isTyping, chatScrollRef]);
 
-    // FIX 1: Sorting Logic! Now it only uses the actual message timestamp, not Date.now() when you click.
     useEffect(() => {
         if (messages.length > 0 && activeChat) {
             const lastMsg = messages[messages.length - 1];
             const lastMsgTime = new Date(lastMsg.created_at).getTime();
 
             setLastActivity(prev => {
-                // Only update if this new message is strictly newer than what we recorded
                 if (!prev[activeChat.friend_id] || lastMsgTime > prev[activeChat.friend_id]) {
                     const updated = { ...prev, [activeChat.friend_id]: lastMsgTime };
                     localStorage.setItem('filehub_chat_activity', JSON.stringify(updated));
@@ -135,26 +133,25 @@ export default function ChatInterface({
     };
 
     return (
-        // FIX 2: Restored bg-[#111]/80 backdrop-blur-md on the wrapper, removed solid inner backgrounds!
-        <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative bg-transparent md:bg-[#111]/80 md:backdrop-blur-md md:border border-[#333] rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
+        <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative bg-transparent md:bg-black/50 md:backdrop-blur-xl md:border border-[#222] rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
             
             {/* LEFT SIDEBAR */}
-            <div className={`w-full md:w-72 lg:w-80 flex-col border-r border-[#333] bg-transparent shrink-0 h-full ${activeChat ? 'hidden md:flex' : 'flex'}`}>
+            <div className={`w-full md:w-72 lg:w-80 flex-col border-r border-[#222] bg-transparent shrink-0 h-full ${activeChat ? 'hidden md:flex' : 'flex'}`}>
                 
-                <div className="p-4 border-b border-[#333] flex justify-between items-center bg-black/40">
+                <div className="p-4 border-b border-[#222] flex justify-between items-center bg-transparent">
                     <h2 className="font-bold text-white text-sm tracking-wide">
                         {leftView === 'chats' ? 'Messages' : 'Network Nodes'}
                     </h2>
                     <button 
                         onClick={() => setLeftView(leftView === 'chats' ? 'contacts' : 'chats')} 
-                        className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#222] hover:bg-[#333] px-2.5 py-1.5 rounded transition"
+                        className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] px-2.5 py-1.5 rounded transition"
                     >
                         {leftView === 'chats' ? '+ Add' : '← Back'}
                     </button>
                 </div>
 
                 {leftView === 'chats' && (
-                    <div className="flex-1 overflow-y-auto scrollbar-hide bg-black/20">
+                    <div className="flex-1 overflow-y-auto scrollbar-hide bg-transparent">
                         {friends.length === 0 ? (
                             <div className="p-6 text-center text-xs text-[#666] italic">No established connections. Click '+ Add' to find users.</div>
                         ) : (
@@ -167,11 +164,12 @@ export default function ChatInterface({
                                     <div 
                                         key={f.friendship_id} 
                                         onClick={() => setActiveChat(f)} 
-                                        className={`group flex items-center gap-3 p-3 cursor-pointer border-b border-[#222]/50 transition ${isActive ? 'bg-black/60' : 'hover:bg-black/40'}`}
+                                        className={`group flex items-center gap-3 p-3 cursor-pointer border-b border-[#222]/50 transition ${isActive ? 'bg-[#111] border-l-2 border-l-white' : 'hover:bg-white/5 border-l-2 border-l-transparent'}`}
                                     >
-                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-900 to-indigo-900 border border-[#444] flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-inner relative">
+                                        {/* CHANGED: Minimal Dark Profile Circle */}
+                                        <div className="w-11 h-11 rounded-full bg-[#111] border border-[#333] flex items-center justify-center text-slate-200 font-bold text-lg shrink-0 relative">
                                             {f.username.charAt(0).toUpperCase()}
-                                            {isUnread && <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-blue-500 rounded-full border-2 border-[#111]"></span>}
+                                            {isUnread && <span className="absolute bottom-0 right-0 w-3 h-3 bg-blue-500 rounded-full border-2 border-[#111]"></span>}
                                         </div>
                                         
                                         <div className="flex-1 min-w-0">
@@ -197,16 +195,16 @@ export default function ChatInterface({
                 )}
 
                 {leftView === 'contacts' && (
-                    <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-black/20">
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-transparent">
                         <div>
                             <h3 className="text-[#666] text-[10px] font-bold uppercase tracking-widest mb-2">Find Friends</h3>
                             <div className="flex gap-2">
-                                <input type="text" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Enter exact username..." className="flex-1 bg-black border border-[#333] text-white text-xs p-2.5 rounded-lg focus:border-white outline-none w-full"/>
+                                <input type="text" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Enter exact username..." className="flex-1 bg-[#111] border border-[#333] text-white text-xs p-2.5 rounded-lg focus:border-white outline-none w-full"/>
                                 <button onClick={handleSearchUsers} className="bg-white text-black font-bold text-[10px] px-3 rounded-lg uppercase tracking-widest hover:bg-[#ccc] transition">Scan</button>
                             </div>
                             <div className="space-y-2 mt-3">
                                 {searchResults.map((r: any) => (
-                                    <div key={r.id} className="flex items-center justify-between bg-black/60 p-2.5 rounded border border-[#333]">
+                                    <div key={r.id} className="flex items-center justify-between bg-[#0a0a0a] p-2.5 rounded border border-[#222]">
                                         <span className="text-xs font-bold text-slate-200">{r.username}</span>
                                         <button onClick={() => sendFriendRequest(r.id)} className="text-[9px] font-bold text-blue-500 border border-blue-900/50 bg-blue-500/10 px-2 py-1 rounded hover:bg-blue-500/20 uppercase tracking-widest transition">Connect</button>
                                     </div>
@@ -222,7 +220,7 @@ export default function ChatInterface({
                             {friendRequests.length === 0 ? <p className="text-[11px] text-[#444] italic">No pending requests.</p> : (
                                 <div className="space-y-2">
                                     {friendRequests.map((req: any) => (
-                                        <div key={req.id} className="flex items-center justify-between bg-black/60 p-2.5 rounded border border-[#333]">
+                                        <div key={req.id} className="flex items-center justify-between bg-[#0a0a0a] p-2.5 rounded border border-[#222]">
                                             <span className="text-xs font-bold text-slate-200">{req.username}</span>
                                             <div className="flex gap-2">
                                                 <button onClick={() => handleRequestAction(req.id, 'accept')} className="text-[10px] p-1.5 rounded bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-black transition" title="Accept">✓</button>
@@ -241,20 +239,21 @@ export default function ChatInterface({
             <div className={`flex-1 flex-col relative h-full bg-transparent ${!activeChat ? 'hidden md:flex' : 'flex'}`}>
                 
                 {!activeChat ? (
-                    <div className="flex-1 flex flex-col items-center justify-center relative p-6 text-center bg-black/40">
+                    <div className="flex-1 flex flex-col items-center justify-center relative p-6 text-center bg-transparent">
                         <NetworkBackground />
-                        <div className="bg-[#111]/80 backdrop-blur border border-[#333] py-2 px-4 rounded-full z-10">
+                        <div className="bg-[#050505]/80 backdrop-blur-md border border-[#222] py-2 px-4 rounded-full z-10">
                             <p className="text-[#888] text-[10px] font-bold uppercase tracking-widest">Select a node to view encrypted messages</p>
                         </div>
                     </div>
                 ) : (
                     <>
-                        <div className="px-4 py-3 border-b border-[#333] bg-black/40 z-10 flex items-center gap-3 shrink-0">
+                        <div className="px-4 py-3 border-b border-[#222] bg-transparent z-10 flex items-center gap-3 shrink-0">
                             <button onClick={() => setActiveChat(null)} className="md:hidden text-[#888] hover:text-white pr-2 border-r border-[#333]">
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
                             </button>
                             
-                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-900 to-indigo-900 border border-[#444] flex items-center justify-center text-white font-bold shrink-0">
+                            {/* CHANGED: Minimal Dark Profile Circle in Chat Header */}
+                            <div className="w-9 h-9 rounded-full bg-[#111] border border-[#333] flex items-center justify-center text-slate-200 font-bold shrink-0">
                                 {activeChat.username.charAt(0).toUpperCase()}
                             </div>
                             
@@ -264,7 +263,7 @@ export default function ChatInterface({
                             </div>
                         </div>
 
-                        <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-6 space-y-1.5 z-10 relative bg-black/60">
+                        <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-6 space-y-1.5 z-10 relative bg-transparent">
                             
                             {reactingTo && (
                                 <div className="fixed inset-0 z-[40]" onClick={() => setReactingTo(null)}></div>
@@ -272,7 +271,7 @@ export default function ChatInterface({
 
                             {messages.length === 0 ? (
                                 <div className="h-full flex items-center justify-center">
-                                    <div className="bg-[#111] border border-[#333] py-2 px-4 rounded-xl text-[#666] text-[11px] font-medium text-center shadow-lg">
+                                    <div className="bg-[#0a0a0a] border border-[#222] py-2 px-4 rounded-xl text-[#666] text-[11px] font-medium text-center shadow-lg">
                                         End-to-end encrypted connection established.<br/>Messages cannot be intercepted by third parties.
                                     </div>
                                 </div>
@@ -286,7 +285,7 @@ export default function ChatInterface({
                                     if (msg.is_deleted) {
                                         return (
                                             <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-3`}>
-                                                <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-3 py-2 shadow-sm flex items-center gap-2 ${isMine ? 'bg-[#111] border border-[#333] text-[#666] rounded-br-none' : 'bg-black/40 border border-[#333] text-[#666] rounded-bl-none'}`}>
+                                                <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-3 py-2 shadow-sm flex items-center gap-2 ${isMine ? 'bg-[#111] border border-[#333] text-[#666] rounded-br-none' : 'bg-[#0a0a0a] border border-[#222] text-[#666] rounded-bl-none'}`}>
                                                     <span className="text-[10px] opacity-50">🚫</span>
                                                     <p className="text-[11px] italic opacity-70">This message was deleted</p>
                                                 </div>
@@ -301,7 +300,7 @@ export default function ChatInterface({
                                         <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-5 ${reactingTo === msg.id ? 'z-[50]' : 'z-10'}`}>
                                             
                                             {reactingTo === msg.id && (
-                                                <div className={`absolute bottom-[calc(100%+4px)] ${isMine ? 'right-0' : 'left-0'} z-[70] bg-[#222] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.5)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
+                                                <div className={`absolute bottom-[calc(100%+4px)] ${isMine ? 'right-0' : 'left-0'} z-[70] bg-[#111] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.8)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
                                                     {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
                                                         <button 
                                                             key={emoji} 
@@ -325,10 +324,10 @@ export default function ChatInterface({
                                                 )}
                                             </div>
 
-                                            <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-3 py-2 shadow-md z-10 relative ${isMine ? 'order-2 bg-blue-600 text-white rounded-br-none' : 'order-1 bg-[#111] border border-[#333] text-slate-200 rounded-bl-none'}`}>
+                                            <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-3 py-2 shadow-md z-10 relative ${isMine ? 'order-2 bg-blue-600 text-white rounded-br-none' : 'order-1 bg-[#0a0a0a] border border-[#222] text-slate-200 rounded-bl-none'}`}>
                                                 
                                                 {reactionCount > 0 && (
-                                                    <div className={`absolute -bottom-3.5 right-2 bg-[#0a0a0a] border-[3px] border-[#0a0a0a] rounded-full px-1.5 py-0.5 text-[12px] shadow-sm flex items-center justify-center gap-0.5 z-20`}>
+                                                    <div className={`absolute -bottom-3.5 right-2 ${isMine ? 'bg-[#050505]' : 'bg-[#050505]'} border-[3px] border-[#050505] rounded-full px-1.5 py-0.5 text-[12px] shadow-sm flex items-center justify-center gap-0.5 z-20`}>
                                                         {uniqueEmojis.map((emoji: any, i) => <span key={i} className="leading-none">{emoji}</span>)}
                                                         {reactionCount > 1 && <span className="text-[#aaa] text-[9px] font-bold ml-0.5 leading-none">{reactionCount}</span>}
                                                     </div>
@@ -337,7 +336,7 @@ export default function ChatInterface({
                                                 {msg.content && <p className="text-[13px] whitespace-pre-wrap break-words leading-snug">{msg.content}</p>}
                                                 
                                                 {msg.file_name && (
-                                                    <div className={`mt-1.5 flex flex-col gap-1 p-1 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-black/40 border-[#333]'}`}>
+                                                    <div className={`mt-1.5 flex flex-col gap-1 p-1 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#333]'}`}>
                                                         {isVoiceNote ? (
                                                             <VoiceNotePlayer path={msg.file_path} isMine={isMine} />
                                                         ) : (
@@ -371,7 +370,7 @@ export default function ChatInterface({
                             )}
                             {isTyping && (
                                 <div className="flex justify-start">
-                                    <div className="bg-[#111] border border-[#333] text-[#888] text-[10px] font-bold uppercase tracking-widest px-4 py-2.5 rounded-xl rounded-bl-none animate-pulse shadow-sm">
+                                    <div className="bg-[#0a0a0a] border border-[#222] text-[#888] text-[10px] font-bold uppercase tracking-widest px-4 py-2.5 rounded-xl rounded-bl-none animate-pulse shadow-sm">
                                         {activeChat.username} is typing...
                                     </div>
                                 </div>
@@ -379,7 +378,7 @@ export default function ChatInterface({
                             <div ref={messagesEndRef} />
                         </div>
 
-                        <form onSubmit={handleSendMessage} className="p-3 bg-black/40 border-t border-[#333] z-10 flex gap-2 items-center shrink-0">
+                        <form onSubmit={handleSendMessage} className="p-3 bg-transparent border-t border-[#222] z-10 flex gap-2 items-center shrink-0">
                             {isRecording ? (
                                 <div className="flex-1 bg-red-900/20 border border-red-500/50 rounded-xl flex items-center justify-between p-3 transition">
                                     <div className="flex items-center gap-2">
@@ -389,7 +388,7 @@ export default function ChatInterface({
                                     <button type="button" onClick={cancelRecording} className="text-red-400 hover:text-red-300 text-[10px] font-bold uppercase tracking-widest transition">Cancel ✕</button>
                                 </div>
                             ) : (
-                                <div className="flex-1 bg-black/60 border border-[#444] rounded-xl flex items-center pr-2 focus-within:border-white transition shadow-inner">
+                                <div className="flex-1 bg-[#111] border border-[#333] rounded-xl flex items-center pr-2 focus-within:border-white transition shadow-inner">
                                     <input 
                                         type="text" 
                                         value={newMessage} 
@@ -398,7 +397,7 @@ export default function ChatInterface({
                                         className="w-full bg-transparent text-white text-sm p-3 outline-none"
                                     />
                                     <input type="file" ref={chatFileInputRef} onChange={e => setChatFile(e.target.files?.[0] || null)} className="hidden" id="chat-file" />
-                                    <label htmlFor="chat-file" className={`cursor-pointer p-2 hover:bg-[#333] rounded-lg transition flex items-center gap-1 ${chatFile ? 'text-green-500 font-bold' : 'text-[#888]'}`} title={chatFile ? chatFile.name : "Attach file"}>
+                                    <label htmlFor="chat-file" className={`cursor-pointer p-2 hover:bg-[#222] rounded-lg transition flex items-center gap-1 ${chatFile ? 'text-green-500 font-bold' : 'text-[#888]'}`} title={chatFile ? chatFile.name : "Attach file"}>
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
                                         {chatFile && <span className="text-[10px] truncate max-w-[60px] hidden sm:inline-block">{chatFile.name}</span>}
                                     </label>
@@ -411,7 +410,7 @@ export default function ChatInterface({
                                 </button>
                             ) : (
                                 <>
-                                    <button type="button" onClick={startRecording} className="bg-[#222] text-white hover:bg-[#333] p-3 rounded-xl transition shrink-0" title="Voice Note">
+                                    <button type="button" onClick={startRecording} className="bg-[#111] border border-[#333] text-white hover:bg-[#222] p-3 rounded-xl transition shrink-0" title="Voice Note">
                                         🎤
                                     </button>
                                     <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-5 py-3 rounded-xl text-[11px] uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shrink-0">
