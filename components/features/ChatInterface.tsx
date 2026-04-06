@@ -8,8 +8,7 @@ import FileThumbnail from '../ui/FileThumbnail';
 import VoiceNotePlayer from '../ui/VoiceNotePlayer';
 
 export default function ChatInterface({
-    isVisible, // NEW PROP: Tells us if the user is looking at the chat or files
-    searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest,
+    isVisible, searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest,
     friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders,
     messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile,
     chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend,
@@ -41,7 +40,6 @@ export default function ChatInterface({
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
 
-    // NEW: Draggable State Math
     const [pipPos, setPipPos] = useState({ x: 0, y: 0 });
     const dragRef = useRef<{ startX: number, startY: number, initX: number, initY: number } | null>(null);
 
@@ -49,6 +47,10 @@ export default function ChatInterface({
     const remoteVideoRef = useRef<HTMLVideoElement>(null);
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
+    
+    // NEW FIX: The ICE Candidate Waiting Room!
+    const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
+
     const myName = user?.user_metadata?.custom_username || user?.email?.split('@')[0] || 'Unknown Node';
 
     const prevMessagesLength = useRef(0);
@@ -106,11 +108,8 @@ export default function ChatInterface({
         return () => clearInterval(interval);
     }, [callStatus]);
 
-    // NEW: Auto-minimize the call if the user navigates to Folders or Search!
     useEffect(() => {
-        if (!isVisible && callStatus !== 'idle') {
-            setIsMinimized(true);
-        }
+        if (!isVisible && callStatus !== 'idle') setIsMinimized(true);
     }, [isVisible, callStatus]);
 
     const formatDuration = (secs: number) => {
@@ -119,9 +118,6 @@ export default function ChatInterface({
         return `${m}:${s < 10 ? '0' : ''}${s}`;
     };
 
-    // ==========================================
-    // DRAG AND DROP MATH FOR PICTURE-IN-PICTURE
-    // ==========================================
     const handlePointerDown = (e: React.PointerEvent) => {
         if (!isMinimized) return;
         dragRef.current = { startX: e.clientX, startY: e.clientY, initX: pipPos.x, initY: pipPos.y };
@@ -139,7 +135,7 @@ export default function ChatInterface({
     };
 
     // ==========================================
-    // WEBRTC SIGNALING LOGIC
+    // BULLETPROOF WEBRTC SIGNALING LOGIC
     // ==========================================
     useEffect(() => {
         if (!user) return;
@@ -153,16 +149,30 @@ export default function ChatInterface({
                     setCallStatus('ringing');
                     setActiveCallFriendId(data.sender_id);
                     setIsVideoCall(data.isVideo);
-                } else if (data.type === 'answer') {
+                } 
+                else if (data.type === 'answer') {
                     if (peerConnectionRef.current) {
                         await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
                         setCallStatus('connected');
+                        
+                        // FIX: Flush waiting room for the Caller
+                        for (const candidate of pendingCandidates.current) {
+                            try { await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e) { console.log(e); }
+                        }
+                        pendingCandidates.current = [];
                     }
-                } else if (data.type === 'candidate') {
-                    if (peerConnectionRef.current) {
+                } 
+                else if (data.type === 'candidate') {
+                    // FIX: The Waiting Room Logic!
+                    if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+                        // If connection is fully awake, add the route immediately
                         try { await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e) { console.log(e); }
+                    } else {
+                        // If phone is still ringing or setting up, throw the route in the waiting room!
+                        pendingCandidates.current.push(data.candidate);
                     }
-                } else if (data.type === 'reject') {
+                } 
+                else if (data.type === 'reject') {
                     cleanupCall();
                     if (showAlert) showAlert("Call Declined", "The user declined your call.");
                     insertCallLog(data.isVideo ? '❌ Missed Video Call' : '❌ Missed Voice Call', data.sender_id);
@@ -208,20 +218,26 @@ export default function ChatInterface({
         setIsMinimized(false);
         setIsMuted(false);
         setIsVideoOff(false);
-        setPipPos({ x: 0, y: 0 }); // Reset Drag position
+        setPipPos({ x: 0, y: 0 }); 
+        pendingCandidates.current = []; // FIX: Empty the waiting room
     };
 
     const createPeerConnection = (targetId: string) => {
+        // We use Google's free public servers to bounce the connection between routers
         const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        
         pc.onicecandidate = (event) => {
             if (event.candidate) sendSignal('candidate', targetId, { candidate: event.candidate });
         };
+        
         pc.ontrack = (event) => {
             if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0];
         };
+        
         if (localStreamRef.current) {
             localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!));
         }
+        
         peerConnectionRef.current = pc;
         return pc;
     };
@@ -231,6 +247,7 @@ export default function ChatInterface({
         setIsVideoCall(isVideo);
         setActiveCallFriendId(activeChat.friend_id);
         setCallStatus('calling');
+        pendingCandidates.current = [];
         
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: isVideo, audio: true });
@@ -258,6 +275,13 @@ export default function ChatInterface({
 
             const pc = createPeerConnection(incomingCall.caller_id);
             await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+            
+            // FIX: Flush the waiting room for the Receiver! (Inject candidates that arrived during Ringing)
+            for (const candidate of pendingCandidates.current) {
+                try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e) { console.log(e); }
+            }
+            pendingCandidates.current = [];
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
@@ -684,7 +708,7 @@ export default function ChatInterface({
             </div>
 
             {/* ========================================== */}
-            {/* NEW: DRAGGABLE PICTURE-IN-PICTURE WEBRTC UI */}
+            {/* DRAGGABLE PICTURE-IN-PICTURE WEBRTC UI */}
             {/* ========================================== */}
             {callStatus !== 'idle' && (
                 <div 
@@ -697,7 +721,6 @@ export default function ChatInterface({
                     
                     <div className="absolute inset-0 bg-gradient-to-b from-blue-900/20 to-black pointer-events-none"></div>
                     
-                    {/* Minimize / Maximize Button */}
                     <button onClick={(e) => { e.stopPropagation(); setIsMinimized(!isMinimized); }} className="absolute top-3 left-3 z-50 bg-black/50 hover:bg-black/80 border border-[#444] text-white p-1.5 rounded-full backdrop-blur transition shadow-lg cursor-pointer">
                         {isMinimized ? <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg> : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>}
                     </button>
