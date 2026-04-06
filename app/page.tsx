@@ -57,6 +57,10 @@ export default function DistributedFileHub() {
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [chatFile, setChatFile] = useState<File | null>(null);
+  
+  // NEW: State to track what message we are replying to
+  const [replyTo, setReplyTo] = useState<any>(null);
+  
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);
   const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -243,72 +247,46 @@ export default function DistributedFileHub() {
   const startRecording = async () => {
       try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          
-          let explicitMimeType = '';
-          let ext = 'webm';
-
-          if (MediaRecorder.isTypeSupported('audio/mp4')) {
-              explicitMimeType = 'audio/mp4';
-              ext = 'mp4'; 
-          } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-              explicitMimeType = 'audio/webm';
-              ext = 'webm'; 
-          } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-              explicitMimeType = 'audio/ogg';
-              ext = 'ogg'; 
-          }
+          let explicitMimeType = ''; let ext = 'webm';
+          if (MediaRecorder.isTypeSupported('audio/mp4')) { explicitMimeType = 'audio/mp4'; ext = 'mp4'; }
+          else if (MediaRecorder.isTypeSupported('audio/webm')) { explicitMimeType = 'audio/webm'; ext = 'webm'; }
+          else if (MediaRecorder.isTypeSupported('audio/ogg')) { explicitMimeType = 'audio/ogg'; ext = 'ogg'; }
 
           const options = explicitMimeType ? { mimeType: explicitMimeType } : undefined;
           const mediaRecorder = new MediaRecorder(stream, options);
-          
-          mediaRecorderRef.current = mediaRecorder;
-          audioChunksRef.current = [];
-          
-          mediaRecorder.ondataavailable = (e: any) => { 
-              if (e.data.size > 0) audioChunksRef.current.push(e.data); 
-          };
-          
+          mediaRecorderRef.current = mediaRecorder; audioChunksRef.current = [];
+          mediaRecorder.ondataavailable = (e: any) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
           mediaRecorder.onstop = async () => {
               if (audioChunksRef.current.length === 0) return;
-              
               const fileName = `Voice Note.${ext}`;
               const filePath = `chat-audio-${Date.now()}-${Math.random().toString(36).substring(2,9)}.${ext}`;
-              
-              const audioBlob = explicitMimeType 
-                  ? new Blob(audioChunksRef.current, { type: explicitMimeType })
-                  : new Blob(audioChunksRef.current);
-                  
+              const audioBlob = explicitMimeType ? new Blob(audioChunksRef.current, { type: explicitMimeType }) : new Blob(audioChunksRef.current);
               const audioFile = new File([audioBlob], fileName, { type: explicitMimeType || 'audio/mp4' });
               
               const { error: uploadError } = await supabase.storage.from('user-files').upload(filePath, audioFile);
-              
               if (!uploadError && user && activeChat) {
+                  // NEW: Includes replyTo ID if recording a voice note reply!
                   await supabase.from('messages').insert([{ 
-                      sender_id: user.id, 
-                      receiver_id: activeChat.friend_id, 
-                      content: '', 
-                      file_path: filePath, 
-                      file_name: fileName, 
-                      is_read: false 
+                      sender_id: user.id, receiver_id: activeChat.friend_id, content: '', 
+                      file_path: filePath, file_name: fileName, is_read: false,
+                      reply_to_id: replyTo ? replyTo.id : null 
                   }]);
+                  setReplyTo(null);
               }
               stream.getTracks().forEach(track => track.stop()); 
           };
-          mediaRecorder.start();
-          setIsRecording(true);
-      } catch (err) { 
-          showAlert("Microphone Error", "Could not access microphone."); 
-      }
+          mediaRecorder.start(); setIsRecording(true);
+      } catch (err) { showAlert("Microphone Error", "Could not access microphone."); }
   };
 
   const stopRecordingAndSend = () => { if (mediaRecorderRef.current && isRecording) { mediaRecorderRef.current.stop(); setIsRecording(false); } };
   const cancelRecording = () => {
       if (mediaRecorderRef.current && isRecording) {
           mediaRecorderRef.current.onstop = () => { mediaRecorderRef.current?.stream?.getTracks().forEach(track => track.stop()); };
-          mediaRecorderRef.current.stop();
-          setIsRecording(false);
+          mediaRecorderRef.current.stop(); setIsRecording(false);
       }
   };
+
   const handleSendMessage = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if ((!newMessage.trim() && !chatFile) || !user || !activeChat) return;
@@ -319,9 +297,25 @@ export default function DistributedFileHub() {
       const { error } = await supabase.storage.from('user-files').upload(filePath, chatFile);
       if (error) return showAlert("Upload Error", error.message);
     }
-    const { error } = await supabase.from('messages').insert([{ sender_id: user.id, receiver_id: activeChat.friend_id, content: newMessage.trim(), file_path: filePath, file_name: fileName, is_read: false }]);
+    
+    // CHANGED: Include the reply_to_id
+    const { error } = await supabase.from('messages').insert([{ 
+        sender_id: user.id, 
+        receiver_id: activeChat.friend_id, 
+        content: newMessage.trim(), 
+        file_path: filePath, 
+        file_name: fileName, 
+        is_read: false,
+        reply_to_id: replyTo ? replyTo.id : null 
+    }]);
+
     if (error) showAlert("Send Error", error.message);
-    else { setNewMessage(''); setChatFile(null); if (chatFileInputRef.current) chatFileInputRef.current.value = ""; }
+    else { 
+        setNewMessage(''); 
+        setChatFile(null); 
+        setReplyTo(null); // Clear the reply preview after sending
+        if (chatFileInputRef.current) chatFileInputRef.current.value = ""; 
+    }
   };
 
   const handleAuth = async (e?: React.FormEvent) => {
@@ -331,9 +325,7 @@ export default function DistributedFileHub() {
       const { data: isAvailable } = await supabase.rpc('check_username_available', { requested_username: username });
       if (isAvailable === false) return showAlert("Notice", "That username is already taken.");
       const { error } = await supabase.auth.signUp({ email, password, options: { data: { custom_username: username } } });
-      
       if (error) return showAlert("Error", error.message);
-      
       setAwaitingOTP(true); 
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -343,21 +335,10 @@ export default function DistributedFileHub() {
 
   const handleVerifyOTP = async (e?: React.FormEvent) => {
       e?.preventDefault();
-      // CHANGED: We now correctly check for 8 digits
       if (!otpCode || otpCode.length !== 8) return showAlert("Notice", "Please enter the full 8-digit code.");
-      
-      const { error } = await supabase.auth.verifyOtp({ 
-          email, 
-          token: otpCode, 
-          type: 'signup' 
-      });
-      
-      if (error) {
-          showAlert("Verification Failed", "Incorrect or expired code. Please try again.");
-      } else {
-          setAwaitingOTP(false);
-          setOtpCode('');
-      }
+      const { error } = await supabase.auth.verifyOtp({ email, token: otpCode, type: 'signup' });
+      if (error) showAlert("Verification Failed", "Incorrect or expired code. Please try again.");
+      else { setAwaitingOTP(false); setOtpCode(''); }
   };
 
   const handleForgotPassword = async () => {
@@ -491,7 +472,7 @@ export default function DistributedFileHub() {
             {viewingSearch ? (
                 <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
             ) : viewingComms ? (
-                <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef}} />
+                <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef, replyTo, setReplyTo}} />
             ) : viewingAdminPanel ? (
                 <AdminPanel adminUserList={adminUserList} />
             ) : (
