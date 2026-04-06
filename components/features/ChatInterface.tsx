@@ -24,9 +24,9 @@ export default function ChatInterface({
     const [pinnedChats, setPinnedChats] = useState<string[]>([]);
     const [lastActivity, setLastActivity] = useState<Record<string, number>>({});
 
-    // THE FIX: Brought back the strict trackers!
+    // NEW: Safe Trackers & History Lock
     const prevMessagesLength = useRef(0);
-    const prevActiveChatId = useRef<string | null>(null);
+    const isLoadingHistory = useRef(false);
     const prevUnread = useRef<string[]>([]);
 
     useEffect(() => {
@@ -45,17 +45,25 @@ export default function ChatInterface({
         }, 10);
     }, [messages, activeChat, isTyping, chatScrollRef]);
 
-    // THE FIX: Strict Sorting Logic
+    // THE FIX PART 1: The 1-Second History Lock
+    // When you switch chats, we lock the sorting mechanism for 1 second to let history fetch safely.
     useEffect(() => {
-        if (activeChat?.friend_id !== prevActiveChatId.current) {
-            // Switched chats. Do NOT update time, just reset our trackers.
-            prevActiveChatId.current = activeChat?.friend_id || null;
+        isLoadingHistory.current = true;
+        const timer = setTimeout(() => {
+            isLoadingHistory.current = false;
+        }, 1000);
+        return () => clearTimeout(timer);
+    }, [activeChat?.friend_id]);
+
+    // THE FIX PART 2: Foreground Chat Sorting
+    // Only update the timestamp if the lock is OFF and the message count increases
+    useEffect(() => {
+        if (isLoadingHistory.current) {
             prevMessagesLength.current = messages.length;
             return;
         }
 
-        // If we are in the same chat and the message count went up, a new message was sent/received!
-        if (messages.length > prevMessagesLength.current) {
+        if (messages.length > prevMessagesLength.current && activeChat) {
             setLastActivity(prev => {
                 const updated = { ...prev, [activeChat.friend_id]: Date.now() };
                 localStorage.setItem('filehub_chat_activity', JSON.stringify(updated));
@@ -65,6 +73,8 @@ export default function ChatInterface({
         prevMessagesLength.current = messages.length;
     }, [messages, activeChat]);
 
+    // THE FIX PART 3: Background Chat Sorting
+    // Catch unread notifications arriving from chats you aren't currently viewing
     useEffect(() => {
         const newlyUnread = unreadSenders.filter((id: string) => !prevUnread.current.includes(id));
         if (newlyUnread.length > 0) {
@@ -77,6 +87,7 @@ export default function ChatInterface({
         }
         prevUnread.current = unreadSenders;
     }, [unreadSenders]);
+
 
     const togglePin = (friendId: string) => {
         setPinnedChats(prev => {
@@ -109,7 +120,7 @@ export default function ChatInterface({
         const aTime = lastActivity[a.friend_id] || 0;
         const bTime = lastActivity[b.friend_id] || 0;
         
-        if (aTime === bTime) return a.username.localeCompare(b.username); // Fallback to alphabetical
+        if (aTime === bTime) return a.username.localeCompare(b.username); 
         return bTime - aTime; 
     });
 
