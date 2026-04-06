@@ -24,7 +24,7 @@ export default function ChatInterface({
     const [pinnedChats, setPinnedChats] = useState<string[]>([]);
     const [lastActivity, setLastActivity] = useState<Record<string, number>>({});
 
-    // NEW: Refs to safely track changes without triggering re-renders
+    // THE FIX: Brought back the strict trackers!
     const prevMessagesLength = useRef(0);
     const prevActiveChatId = useRef<string | null>(null);
     const prevUnread = useRef<string[]>([]);
@@ -45,7 +45,7 @@ export default function ChatInterface({
         }, 10);
     }, [messages, activeChat, isTyping, chatScrollRef]);
 
-    // FIX 1: Only update timestamp when a NEW message arrives while in the chat, ignore normal clicks
+    // THE FIX: Strict Sorting Logic
     useEffect(() => {
         if (activeChat?.friend_id !== prevActiveChatId.current) {
             // Switched chats. Do NOT update time, just reset our trackers.
@@ -65,7 +65,6 @@ export default function ChatInterface({
         prevMessagesLength.current = messages.length;
     }, [messages, activeChat]);
 
-    // FIX 2: Only update timestamp for NEWLY unread incoming messages (stops unread chats from constantly jumping)
     useEffect(() => {
         const newlyUnread = unreadSenders.filter((id: string) => !prevUnread.current.includes(id));
         if (newlyUnread.length > 0) {
@@ -96,17 +95,21 @@ export default function ChatInterface({
         });
     };
 
-    // FIX 3: Removed "Forced Unread" sorting. Now it's purely Pinned -> Most Recent Time
     const sortedFriends = [...friends].sort((a, b) => {
         const aPinned = pinnedChats.includes(a.friend_id);
         const bPinned = pinnedChats.includes(b.friend_id);
         if (aPinned && !bPinned) return -1;
         if (!aPinned && bPinned) return 1;
 
+        const aUnread = unreadSenders.includes(a.friend_id);
+        const bUnread = unreadSenders.includes(b.friend_id);
+        if (aUnread && !bUnread) return -1;
+        if (!aUnread && bUnread) return 1;
+
         const aTime = lastActivity[a.friend_id] || 0;
         const bTime = lastActivity[b.friend_id] || 0;
         
-        if (aTime === bTime) return a.username.localeCompare(b.username); // Fallback to alphabetical if no messages
+        if (aTime === bTime) return a.username.localeCompare(b.username); // Fallback to alphabetical
         return bTime - aTime; 
     });
 
