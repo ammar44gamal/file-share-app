@@ -17,6 +17,9 @@ export default function ChatInterface({
 
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<{id: string, path: string | null} | null>(null);
+    
+    // NEW: State to track which message we are currently reacting to
+    const [reactingTo, setReactingTo] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -52,9 +55,34 @@ export default function ChatInterface({
         }).eq('id', id);
     };
 
+    // NEW: Function to handle saving an emoji reaction
+    const handleReact = async (msgId: string, emoji: string, currentReactions: any) => {
+        const reactions = currentReactions || {};
+        const newReactions = { ...reactions };
+
+        // If you click the same emoji again, it removes it. Otherwise, it sets/changes it.
+        if (newReactions[user.id] === emoji) {
+            delete newReactions[user.id];
+        } else {
+            newReactions[user.id] = emoji;
+        }
+
+        // Optimistic UI Update so it feels instant
+        setMessages((prev: any[]) => prev.map(m => m.id === msgId ? { ...m, reactions: newReactions } : m));
+        setReactingTo(null);
+
+        // Save to Database
+        await supabase.from('messages').update({ reactions: newReactions }).eq('id', msgId);
+    };
+
     return (
         <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative">
             
+            {/* NEW: Invisible overlay that closes the emoji menu if you click anywhere else on the screen */}
+            {reactingTo && (
+                <div className="fixed inset-0 z-[50]" onClick={() => setReactingTo(null)}></div>
+            )}
+
             <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 md:gap-6 h-full">
                 
                 <div className="lg:col-span-2 lg:order-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-3 md:p-4 rounded-xl shadow-2xl flex flex-col h-[65vh] md:h-[75vh] lg:h-[80vh] min-h-[500px]">
@@ -99,7 +127,7 @@ export default function ChatInterface({
                                             
                                             if (msg.is_deleted) {
                                                 return (
-                                                    <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                                                    <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-3`}>
                                                         <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-3 py-2 shadow-sm flex items-center gap-2 ${isMine ? 'bg-[#111] border border-[#222] text-[#666] rounded-br-none' : 'bg-[#0a0a0a] border border-[#222] text-[#666] rounded-bl-none'}`}>
                                                             <span className="text-[10px] opacity-50">🚫</span>
                                                             <p className="text-[11px] italic opacity-70">This message was deleted</p>
@@ -112,20 +140,52 @@ export default function ChatInterface({
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
                                             return (
-                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative`}>
+                                                // CHANGED: Added mb-2.5 to give space for the floating reactions at the bottom
+                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-2.5`}>
                                                     
-                                                    {isMine && (
-                                                        <button 
-                                                            onClick={() => setConfirmDelete({id: msg.id, path: msg.file_path})} 
-                                                            // CHANGED: opacity-100 on mobile, md:opacity-0 on desktop!
-                                                            className="opacity-100 md:opacity-0 group-hover:opacity-100 focus:opacity-100 text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-all duration-200 shrink-0" 
-                                                            title="Delete Message"
-                                                        >
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                                                        </button>
+                                                    {/* NEW: The Emoji Picker Menu */}
+                                                    {reactingTo === msg.id && (
+                                                        <div className={`absolute top-0 -translate-y-[80%] ${isMine ? 'right-10' : 'left-10'} z-[60] bg-[#1a1a1a] border border-[#333] rounded-full shadow-2xl flex items-center px-2 py-1.5 gap-1.5 animate-in zoom-in-95 duration-200`}>
+                                                            {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(e => (
+                                                                <button key={e} onClick={() => handleReact(msg.id, e, msg.reactions)} className="hover:scale-125 hover:-translate-y-1 transition-all text-lg focus:outline-none">{e}</button>
+                                                            ))}
+                                                        </div>
                                                     )}
 
-                                                    <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-2.5 py-1.5 shadow-md z-10 ${isMine ? 'bg-blue-600 text-white rounded-br-none' : 'bg-[#222] text-slate-200 rounded-bl-none'}`}>
+                                                    {/* NEW: The Action Buttons (Smile & Trash) */}
+                                                    <div className={`opacity-100 md:opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all duration-200 shrink-0 z-10 ${isMine ? 'order-1' : 'order-2'}`}>
+                                                        <button 
+                                                            onClick={() => setReactingTo(msg.id)} 
+                                                            className="text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors" 
+                                                            title="React to Message"
+                                                        >
+                                                            {/* Smiley Face SVG */}
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                                                        </button>
+                                                        {isMine && (
+                                                            <button 
+                                                                onClick={() => setConfirmDelete({id: msg.id, path: msg.file_path})} 
+                                                                className="text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors shrink-0" 
+                                                                title="Delete Message"
+                                                            >
+                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                                                            </button>
+                                                        )}
+                                                    </div>
+
+                                                    <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-2.5 py-1.5 shadow-md z-10 relative ${isMine ? 'order-2 bg-blue-600 text-white rounded-br-none' : 'order-1 bg-[#222] text-slate-200 rounded-bl-none'}`}>
+                                                        
+                                                        {/* NEW: Render the active Reactions attached to the bottom of the bubble */}
+                                                        {(msg.reactions && Object.keys(msg.reactions).length > 0) && (
+                                                            <div className={`absolute -bottom-2 ${isMine ? 'left-2' : 'right-2'} bg-[#1a1a1a] border border-[#444] rounded-full px-1.5 py-0.5 text-[10px] shadow-sm flex items-center gap-0.5 z-20`}>
+                                                                {/* Get unique emojis (in case multiple people clicked the same one) */}
+                                                                {Array.from(new Set(Object.values(msg.reactions))).map((emoji: any, i) => (
+                                                                    <span key={i} className="leading-none">{emoji}</span>
+                                                                ))}
+                                                                {/* Show a counter if more than 1 person reacted */}
+                                                                {Object.keys(msg.reactions).length > 1 && <span className="text-[#888] text-[8px] font-bold ml-0.5 leading-none">{Object.keys(msg.reactions).length}</span>}
+                                                            </div>
+                                                        )}
                                                         
                                                         {msg.content && <p className="text-xs whitespace-pre-wrap break-words leading-snug">{msg.content}</p>}
                                                         
