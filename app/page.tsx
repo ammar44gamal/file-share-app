@@ -405,26 +405,6 @@ export default function DistributedFileHub() {
     });
   };
 
-  // NEW: Connected the message deletion to your custom Modal
-  const handleDeleteMessage = async (msgId: string, filePath: string | null) => {
-      showPrompt("Delete Message", "Type 'DELETE' to remove this message for everyone.", async (val) => {
-          if (val.trim().toUpperCase() !== 'DELETE') return showAlert("Error", "Validation failed.");
-          
-          if (filePath) {
-              await supabase.storage.from('user-files').remove([filePath]);
-          }
-          
-          const { error } = await supabase.from('messages').update({
-              content: '',
-              file_name: null,
-              file_path: null,
-              is_deleted: true
-          }).eq('id', msgId);
-
-          if (error) showAlert("Database Error", error.message);
-      });
-  };
-
   const toggleFolderStatus = async (folderId: string, column: string, currentStatus: boolean) => {
     const { error } = await supabase.from('folders').update({ [column]: !currentStatus }).eq('id', folderId);
     if (error) showAlert("Database Error", error.message); else fetchFolders();
@@ -480,7 +460,7 @@ export default function DistributedFileHub() {
             {viewingSearch ? (
                 <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
             ) : viewingComms ? (
-                <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef, handleDeleteMessage}} />
+                <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef}} />
             ) : viewingAdminPanel ? (
                 <AdminPanel adminUserList={adminUserList} />
             ) : (

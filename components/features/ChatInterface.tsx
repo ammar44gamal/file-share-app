@@ -10,12 +10,14 @@ import VoiceNotePlayer from '../ui/VoiceNotePlayer';
 export default function ChatInterface({
     searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest,
     friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders,
-    messages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile,
+    messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile,
     chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend,
-    cancelRecording, chatScrollRef, handleDeleteMessage // NEW: Passed in from page.tsx!
+    cancelRecording, chatScrollRef
 }: any) {
 
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
+    // NEW: State for our custom confirmation popup
+    const [confirmDelete, setConfirmDelete] = useState<{id: string, path: string | null} | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -31,6 +33,29 @@ export default function ChatInterface({
         if (data?.signedUrl) {
             setPreviewData({ url: data.signedUrl, name });
         }
+    };
+
+    // NEW: The Optimistic Deletion Logic
+    const executeDelete = async () => {
+        if (!confirmDelete) return;
+        const { id, path } = confirmDelete;
+
+        // 1. Instant Optimistic UI Update (Makes it vanish immediately)
+        setMessages((prev: any[]) => prev.map(m => m.id === id ? { ...m, is_deleted: true, content: '', file_name: null, file_path: null } : m));
+        
+        // 2. Close the modal
+        setConfirmDelete(null);
+
+        // 3. Database deletion in the background
+        if (path) {
+            await supabase.storage.from('user-files').remove([path]);
+        }
+        await supabase.from('messages').update({
+            content: '',
+            file_name: null,
+            file_path: null,
+            is_deleted: true
+        }).eq('id', id);
     };
 
     return (
@@ -97,7 +122,7 @@ export default function ChatInterface({
                                                     
                                                     {isMine && (
                                                         <button 
-                                                            onClick={() => handleDeleteMessage(msg.id, msg.file_path)} 
+                                                            onClick={() => setConfirmDelete({id: msg.id, path: msg.file_path})} 
                                                             className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-all duration-200 shrink-0" 
                                                             title="Delete Message"
                                                         >
@@ -242,9 +267,9 @@ export default function ChatInterface({
                         )}
                     </div>
                 </div>
-
             </div>
 
+            {/* Lightbox for Images */}
             {previewData && (
                 <div 
                     className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" 
@@ -265,6 +290,23 @@ export default function ChatInterface({
                     />
                     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111] border border-[#333] text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-lg pointer-events-none">
                         {previewData.name}
+                    </div>
+                </div>
+            )}
+
+            {/* NEW: Beautiful Custom Confirmation Dialog for Deletions */}
+            {confirmDelete && (
+                <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-[#111] border border-[#333] rounded-xl p-6 w-full max-w-xs md:max-w-sm shadow-2xl flex flex-col items-center text-center">
+                        <div className="w-12 h-12 bg-red-500/10 text-red-500 flex items-center justify-center rounded-full mb-4">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                        </div>
+                        <h3 className="text-white font-bold text-lg mb-2">Delete Message</h3>
+                        <p className="text-[#888] text-xs mb-6">Are you sure you want to delete this message for everyone? This cannot be undone.</p>
+                        <div className="flex gap-3 w-full">
+                            <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-lg border border-[#333] text-[#888] hover:text-white hover:bg-[#222] transition font-bold text-xs uppercase tracking-widest">Cancel</button>
+                            <button onClick={executeDelete} className="flex-1 py-2.5 rounded-lg bg-red-600 text-white hover:bg-red-500 transition font-bold text-xs shadow-lg uppercase tracking-widest">Delete</button>
+                        </div>
                     </div>
                 </div>
             )}
