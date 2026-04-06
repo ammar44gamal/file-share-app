@@ -27,6 +27,20 @@ export default function ChatInterface({
     const [messageMenuOpen, setMessageMenuOpen] = useState<string | null>(null);
     const [forwardingMessage, setForwardingMessage] = useState<any>(null);
 
+    // ==========================================
+    // WEBRTC CALLING STATE & REFS
+    // ==========================================
+    const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'ringing' | 'connected'>('idle');
+    const [incomingCall, setIncomingCall] = useState<any>(null);
+    const [isVideoCall, setIsVideoCall] = useState(false);
+    const [activeCallFriendId, setActiveCallFriendId] = useState<string | null>(null);
+
+    const localVideoRef = useRef<HTMLVideoElement>(null);
+    const remoteVideoRef = useRef<HTMLVideoElement>(null);
+    const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+    const localStreamRef = useRef<MediaStream | null>(null);
+    const myName = user?.user_metadata?.custom_username || user?.email?.split('@')[0] || 'Unknown Node';
+
     const prevMessagesLength = useRef(0);
     const isLoadingHistory = useRef(false);
     const prevUnread = useRef<string[]>([]);
@@ -79,6 +93,135 @@ export default function ChatInterface({
         }
         prevUnread.current = unreadSenders;
     }, [unreadSenders]);
+
+    // ==========================================
+    // WEBRTC SIGNALING LOGIC
+    // ==========================================
+    useEffect(() => {
+        if (!user) return;
+        const channel = supabase.channel('webrtc-global')
+            .on('broadcast', { event: 'call-signal' }, async (payload: any) => {
+                const data = payload.payload;
+                if (data.target_id !== user.id) return; // Ignore signals not meant for me
+
+                if (data.type === 'offer') {
+                    setIncomingCall({ caller_id: data.caller_id, caller_name: data.caller_name, offer: data.offer, isVideo: data.isVideo });
+                    setCallStatus('ringing');
+                    setActiveCallFriendId(data.caller_id);
+                    setIsVideoCall(data.isVideo);
+                } else if (data.type === 'answer') {
+                    if (peerConnectionRef.current) {
+                        await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
+                        setCallStatus('connected');
+                    }
+                } else if (data.type === 'candidate') {
+                    if (peerConnectionRef.current) {
+                        try { await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e) { console.log(e); }
+                    }
+                } else if (data.type === 'reject') {
+                    cleanupCall();
+                    alert("Call was declined.");
+                } else if (data.type === 'end') {
+                    cleanupCall();
+                }
+            })
+            .subscribe();
+
+        return () => { supabase.removeChannel(channel); };
+    }, [user]);
+
+    const sendSignal = (type: string, target_id: string, extraData: any = {}) => {
+        supabase.channel('webrtc-global').send({
+            type: 'broadcast',
+            event: 'call-signal',
+            payload: { type, target_id, sender_id: user.id, ...extraData }
+        });
+    };
+
+    const cleanupCall = () => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => track.stop());
+            localStreamRef.current = null;
+        }
+        if (peerConnectionRef.current) {
+            peerConnectionRef.current.close();
+            peerConnectionRef.current = null;
+        }
+        if (localVideoRef.current) localVideoRef.current.srcObject = null;
+        if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+        
+        setCallStatus('idle');
+        setIncomingCall(null);
+        setActiveCallFriendId(null);
+    };
+
+    const createPeerConnection = (targetId: string) => {
+        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        pc.onicecandidate = (event) => {
+            if (event.candidate) sendSignal('candidate', targetId, { candidate: event.candidate });
+        };
+        pc.ontrack = (event) => {
+            if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0];
+        };
+        if (localStreamRef.current) {
+            localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current!));
+        }
+        peerConnectionRef.current = pc;
+        return pc;
+    };
+
+    const startCall = async (isVideo: boolean) => {
+        if (!activeChat) return;
+        setIsVideoCall(isVideo);
+        setActiveCallFriendId(activeChat.friend_id);
+        setCallStatus('calling');
+        
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: isVideo, audio: true });
+            localStreamRef.current = stream;
+            if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+
+            const pc = createPeerConnection(activeChat.friend_id);
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            sendSignal('offer', activeChat.friend_id, { offer, caller_id: user.id, caller_name: myName, isVideo });
+        } catch (err) {
+            alert("Could not access media devices.");
+            cleanupCall();
+        }
+    };
+
+    const acceptCall = async () => {
+        if (!incomingCall) return;
+        setCallStatus('connected');
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: incomingCall.isVideo, audio: true });
+            localStreamRef.current = stream;
+            if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+
+            const pc = createPeerConnection(incomingCall.caller_id);
+            await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            sendSignal('answer', incomingCall.caller_id, { answer });
+        } catch (err) {
+            alert("Could not access media devices.");
+            rejectCall();
+        }
+    };
+
+    const rejectCall = () => {
+        if (incomingCall) sendSignal('reject', incomingCall.caller_id);
+        cleanupCall();
+    };
+
+    const endCall = () => {
+        if (activeCallFriendId) sendSignal('end', activeCallFriendId);
+        cleanupCall();
+    };
+    // ==========================================
 
     const togglePin = (friendId: string) => {
         setPinnedChats(prev => {
@@ -243,22 +386,33 @@ export default function ChatInterface({
                     </div>
                 ) : (
                     <>
-                        <div className="px-4 py-3 border-b border-[#222] bg-transparent z-10 flex items-center gap-3 shrink-0">
-                            <button onClick={() => setActiveChat(null)} className="md:hidden text-[#888] hover:text-white pr-2 border-r border-[#333]">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
-                            </button>
-                            <div className="w-9 h-9 rounded-full bg-[#111] border border-[#333] flex items-center justify-center text-slate-200 font-bold shrink-0">
-                                {activeChat.username.charAt(0).toUpperCase()}
+                        <div className="px-4 py-3 border-b border-[#222] bg-transparent z-10 flex items-center justify-between shrink-0">
+                            <div className="flex items-center gap-3">
+                                <button onClick={() => setActiveChat(null)} className="md:hidden text-[#888] hover:text-white pr-2 border-r border-[#333]">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
+                                </button>
+                                <div className="w-9 h-9 rounded-full bg-[#111] border border-[#333] flex items-center justify-center text-slate-200 font-bold shrink-0">
+                                    {activeChat.username.charAt(0).toUpperCase()}
+                                </div>
+                                <div>
+                                    <p className="text-white font-bold text-sm leading-tight">{activeChat.username}</p>
+                                    <p className="text-green-500 text-[9px] font-bold uppercase tracking-widest">End-to-End Encrypted</p>
+                                </div>
                             </div>
-                            <div className="flex-1">
-                                <p className="text-white font-bold text-sm leading-tight">{activeChat.username}</p>
-                                <p className="text-green-500 text-[9px] font-bold uppercase tracking-widest">End-to-End Encrypted</p>
+                            
+                            {/* WEBRTC CALLING BUTTONS */}
+                            <div className="flex items-center gap-2 md:gap-3">
+                                <button onClick={() => startCall(false)} className="text-[#888] hover:text-white bg-[#111] p-2 rounded-full border border-[#333] hover:bg-[#222] transition shadow-lg" title="Voice Call">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                                </button>
+                                <button onClick={() => startCall(true)} className="text-[#888] hover:text-white bg-[#111] p-2 rounded-full border border-[#333] hover:bg-[#222] transition shadow-lg" title="Video Call">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
+                                </button>
                             </div>
                         </div>
 
                         <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-6 space-y-1.5 z-10 relative bg-transparent scroll-smooth">
                             
-                            {/* OVERLAYS FOR CLICK-AWAY CLOSING */}
                             {reactingTo && <div className="fixed inset-0 z-[40]" onClick={() => setReactingTo(null)}></div>}
                             {messageMenuOpen && <div className="fixed inset-0 z-[40]" onClick={() => setMessageMenuOpen(null)}></div>}
 
@@ -274,7 +428,6 @@ export default function ChatInterface({
                                     const activeReactions = parseReactions(msg.reactions);
                                     const reactionCount = Object.keys(activeReactions).length;
                                     const uniqueEmojis = Array.from(new Set(Object.values(activeReactions)));
-                                    
                                     const repliedMsg = msg.reply_to_id ? messages.find((m: any) => m.id === msg.reply_to_id) : null;
 
                                     if (msg.is_deleted) {
@@ -308,11 +461,10 @@ export default function ChatInterface({
                                                 </button>
                                                 
                                                 <div className="relative">
-                                                    <button onClick={() => setMessageMenuOpen(msg.id)} className="text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors" title="Menu">
+                                                    <button onClick={() => setMessageMenuOpen(messageMenuOpen === msg.id ? null : msg.id)} className="text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors" title="Menu">
                                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                                     </button>
                                                     
-                                                    {/* UPWARD-OPENING MENU */}
                                                     {messageMenuOpen === msg.id && (
                                                         <div className={`absolute ${isMine ? 'right-0' : 'left-0'} bottom-full mb-1 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl z-[80] w-36 overflow-hidden flex flex-col text-left animate-in fade-in zoom-in-95 origin-bottom`}>
                                                             <button onClick={() => { setReplyTo(msg); setMessageMenuOpen(null); }} className="px-4 py-2.5 text-xs text-white hover:bg-[#333] flex items-center gap-2 transition">↩ Reply</button>
@@ -442,6 +594,50 @@ export default function ChatInterface({
                 )}
             </div>
 
+            {/* ========================================== */}
+            {/* WEBRTC CALL OVERLAY (FULL SCREEN) */}
+            {/* ========================================== */}
+            {callStatus !== 'idle' && (
+                <div className="absolute inset-0 z-[1000] bg-[#050505] flex flex-col items-center justify-center overflow-hidden rounded-xl animate-in fade-in zoom-in-95 duration-300">
+                    <div className="absolute inset-0 bg-gradient-to-b from-blue-900/20 to-black pointer-events-none"></div>
+                    
+                    <video ref={remoteVideoRef} autoPlay playsInline className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${(callStatus === 'connected' && isVideoCall) ? 'opacity-100' : 'opacity-0'}`} />
+                    
+                    <div className={`absolute bottom-24 right-6 w-32 h-48 bg-black border border-[#333] rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)] z-20 transition-all duration-500 ${(isVideoCall && (callStatus === 'connected' || callStatus === 'calling')) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
+                        <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
+                    </div>
+
+                    <div className={`z-10 flex flex-col items-center mb-12 transition-opacity duration-500 ${(callStatus === 'connected' && isVideoCall) ? 'opacity-0' : 'opacity-100'}`}>
+                        <div className="w-28 h-28 rounded-full bg-[#111] border-2 border-[#333] flex items-center justify-center text-slate-200 font-bold text-5xl shadow-[0_0_50px_rgba(0,0,0,0.5)] mb-6 relative">
+                            {activeChat?.username?.charAt(0).toUpperCase() || incomingCall?.caller_name?.charAt(0).toUpperCase()}
+                            {callStatus === 'ringing' && <span className="absolute inset-0 rounded-full border-4 border-blue-500 animate-ping opacity-50"></span>}
+                        </div>
+                        <h2 className="text-white text-3xl font-bold mb-2 tracking-tight">{activeChat?.username || incomingCall?.caller_name}</h2>
+                        <p className="text-[#888] text-xs uppercase tracking-widest font-bold animate-pulse">
+                            {callStatus === 'calling' ? 'Calling...' : callStatus === 'ringing' ? 'Incoming Encrypted Call...' : 'Connected Securely'}
+                        </p>
+                    </div>
+
+                    <div className="z-20 flex items-center gap-8">
+                        {callStatus === 'ringing' ? (
+                            <>
+                                <button onClick={rejectCall} className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center hover:bg-red-500 transition hover:scale-110 shadow-[0_0_20px_rgba(220,38,38,0.4)] text-white">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
+                                </button>
+                                <button onClick={acceptCall} className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center hover:bg-green-500 transition hover:scale-110 shadow-[0_0_20px_rgba(22,163,74,0.4)] text-white animate-bounce">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                                </button>
+                            </>
+                        ) : (
+                            <button onClick={endCall} className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center hover:bg-red-500 transition hover:scale-110 shadow-[0_0_20px_rgba(220,38,38,0.4)] text-white">
+                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
+                            </button>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* FORWARDING OVERLAY */}
             {forwardingMessage && (
                 <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-[#111] border border-[#333] rounded-xl p-5 w-full max-w-sm shadow-2xl flex flex-col">
@@ -466,6 +662,7 @@ export default function ChatInterface({
                 </div>
             )}
 
+            {/* IMAGE PREVIEW OVERLAY */}
             {previewData && (
                 <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" onClick={() => setPreviewData(null)}>
                     <button className="absolute top-6 right-6 text-white bg-[#222] border border-[#444] hover:bg-white hover:text-black rounded-full w-10 h-10 flex items-center justify-center font-bold transition shadow-lg z-10" onClick={() => setPreviewData(null)}>✕</button>
@@ -474,6 +671,7 @@ export default function ChatInterface({
                 </div>
             )}
 
+            {/* DELETE CONFIRMATION OVERLAY */}
             {confirmDelete && (
                 <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-[#111] border border-[#333] rounded-xl p-6 w-full max-w-xs md:max-w-sm shadow-2xl flex flex-col items-center text-center">
