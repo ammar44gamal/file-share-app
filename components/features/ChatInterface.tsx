@@ -12,7 +12,7 @@ export default function ChatInterface({
     friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders,
     messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile,
     chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend,
-    cancelRecording, chatScrollRef, replyTo, setReplyTo
+    cancelRecording, chatScrollRef, replyTo, setReplyTo, showAlert // NEW PROP
 }: any) {
 
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
@@ -28,12 +28,18 @@ export default function ChatInterface({
     const [forwardingMessage, setForwardingMessage] = useState<any>(null);
 
     // ==========================================
-    // WEBRTC CALLING STATE & REFS
+    // ADVANCED WEBRTC CALLING STATE
     // ==========================================
     const [callStatus, setCallStatus] = useState<'idle' | 'calling' | 'ringing' | 'connected'>('idle');
     const [incomingCall, setIncomingCall] = useState<any>(null);
     const [isVideoCall, setIsVideoCall] = useState(false);
     const [activeCallFriendId, setActiveCallFriendId] = useState<string | null>(null);
+    
+    // NEW: UX Call States
+    const [isMinimized, setIsMinimized] = useState(false);
+    const [callDuration, setCallDuration] = useState(0);
+    const [isMuted, setIsMuted] = useState(false);
+    const [isVideoOff, setIsVideoOff] = useState(false);
 
     const localVideoRef = useRef<HTMLVideoElement>(null);
     const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -54,9 +60,7 @@ export default function ChatInterface({
 
     useEffect(() => {
         setTimeout(() => {
-            if (chatScrollRef.current) {
-                chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-            }
+            if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
         }, 10);
     }, [messages, activeChat, isTyping, chatScrollRef]);
 
@@ -67,10 +71,7 @@ export default function ChatInterface({
     }, [activeChat?.friend_id]);
 
     useEffect(() => {
-        if (isLoadingHistory.current) {
-            prevMessagesLength.current = messages.length;
-            return;
-        }
+        if (isLoadingHistory.current) { prevMessagesLength.current = messages.length; return; }
         if (messages.length > prevMessagesLength.current && activeChat) {
             setLastActivity(prev => {
                 const updated = { ...prev, [activeChat.friend_id]: Date.now() };
@@ -94,6 +95,23 @@ export default function ChatInterface({
         prevUnread.current = unreadSenders;
     }, [unreadSenders]);
 
+    // NEW: Call Duration Timer
+    useEffect(() => {
+        let interval: any;
+        if (callStatus === 'connected') {
+            interval = setInterval(() => setCallDuration(p => p + 1), 1000);
+        } else {
+            setCallDuration(0);
+        }
+        return () => clearInterval(interval);
+    }, [callStatus]);
+
+    const formatDuration = (secs: number) => {
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
+    };
+
     // ==========================================
     // WEBRTC SIGNALING LOGIC
     // ==========================================
@@ -102,12 +120,12 @@ export default function ChatInterface({
         const channel = supabase.channel('webrtc-global')
             .on('broadcast', { event: 'call-signal' }, async (payload: any) => {
                 const data = payload.payload;
-                if (data.target_id !== user.id) return; // Ignore signals not meant for me
+                if (data.target_id !== user.id) return;
 
                 if (data.type === 'offer') {
-                    setIncomingCall({ caller_id: data.caller_id, caller_name: data.caller_name, offer: data.offer, isVideo: data.isVideo });
+                    setIncomingCall({ caller_id: data.sender_id, caller_name: data.caller_name, offer: data.offer, isVideo: data.isVideo });
                     setCallStatus('ringing');
-                    setActiveCallFriendId(data.caller_id);
+                    setActiveCallFriendId(data.sender_id);
                     setIsVideoCall(data.isVideo);
                 } else if (data.type === 'answer') {
                     if (peerConnectionRef.current) {
@@ -120,7 +138,12 @@ export default function ChatInterface({
                     }
                 } else if (data.type === 'reject') {
                     cleanupCall();
-                    alert("Call was declined.");
+                    if (showAlert) showAlert("Call Declined", "The user declined your call.");
+                    // Caller logs the missed call
+                    insertCallLog(data.isVideo ? '❌ Missed Video Call' : '❌ Missed Voice Call', data.sender_id);
+                } else if (data.type === 'cancel') {
+                    cleanupCall();
+                    if (showAlert) showAlert("Call Canceled", "The caller hung up before you answered.");
                 } else if (data.type === 'end') {
                     cleanupCall();
                 }
@@ -128,7 +151,7 @@ export default function ChatInterface({
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
-    }, [user]);
+    }, [user, showAlert]);
 
     const sendSignal = (type: string, target_id: string, extraData: any = {}) => {
         supabase.channel('webrtc-global').send({
@@ -136,6 +159,16 @@ export default function ChatInterface({
             event: 'call-signal',
             payload: { type, target_id, sender_id: user.id, ...extraData }
         });
+    };
+
+    // NEW: Database Call Logger
+    const insertCallLog = async (text: string, targetId: string) => {
+        await supabase.from('messages').insert([{
+            sender_id: user.id,
+            receiver_id: targetId,
+            content: text,
+            is_read: false
+        }]);
     };
 
     const cleanupCall = () => {
@@ -153,6 +186,9 @@ export default function ChatInterface({
         setCallStatus('idle');
         setIncomingCall(null);
         setActiveCallFriendId(null);
+        setIsMinimized(false);
+        setIsMuted(false);
+        setIsVideoOff(false);
     };
 
     const createPeerConnection = (targetId: string) => {
@@ -185,9 +221,9 @@ export default function ChatInterface({
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
-            sendSignal('offer', activeChat.friend_id, { offer, caller_id: user.id, caller_name: myName, isVideo });
+            sendSignal('offer', activeChat.friend_id, { offer, caller_name: myName, isVideo });
         } catch (err) {
-            alert("Could not access media devices.");
+            if (showAlert) showAlert("Device Error", "Could not access microphone or camera.");
             cleanupCall();
         }
     };
@@ -207,7 +243,7 @@ export default function ChatInterface({
 
             sendSignal('answer', incomingCall.caller_id, { answer });
         } catch (err) {
-            alert("Could not access media devices.");
+            if (showAlert) showAlert("Device Error", "Could not access microphone or camera.");
             rejectCall();
         }
     };
@@ -217,9 +253,35 @@ export default function ChatInterface({
         cleanupCall();
     };
 
-    const endCall = () => {
-        if (activeCallFriendId) sendSignal('end', activeCallFriendId);
+    const cancelCall = () => {
+        if (activeCallFriendId) {
+            sendSignal('cancel', activeCallFriendId);
+            insertCallLog(isVideoCall ? '❌ Canceled Video Call' : '❌ Canceled Voice Call', activeCallFriendId);
+        }
         cleanupCall();
+    };
+
+    const endCall = () => {
+        if (activeCallFriendId) {
+            sendSignal('end', activeCallFriendId);
+            // Log the duration when someone hangs up
+            insertCallLog(isVideoCall ? `📹 Video Call - ${formatDuration(callDuration)}` : `📞 Voice Call - ${formatDuration(callDuration)}`, activeCallFriendId);
+        }
+        cleanupCall();
+    };
+
+    // NEW: Media Toggles
+    const toggleMute = () => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getAudioTracks().forEach(t => t.enabled = !t.enabled);
+            setIsMuted(!isMuted);
+        }
+    };
+    const toggleVideo = () => {
+        if (localStreamRef.current) {
+            localStreamRef.current.getVideoTracks().forEach(t => t.enabled = !t.enabled);
+            setIsVideoOff(!isVideoOff);
+        }
     };
     // ==========================================
 
@@ -229,7 +291,7 @@ export default function ChatInterface({
             let newPins = [];
             if (isPinned) newPins = prev.filter(id => id !== friendId);
             else if (prev.length < 3) newPins = [...prev, friendId];
-            else { alert("You can only pin up to 3 chats."); return prev; }
+            else { if(showAlert) showAlert("Notice", "You can only pin up to 3 chats."); return prev; }
             localStorage.setItem('filehub_pinned_chats', JSON.stringify(newPins));
             return newPins;
         });
@@ -277,7 +339,7 @@ export default function ChatInterface({
             is_read: false,
             is_forwarded: true
         }]);
-        if (error) alert("Error forwarding message: " + error.message);
+        if (error && showAlert) showAlert("Error", "Failed to forward message: " + error.message);
         setForwardingMessage(null);
     };
 
@@ -400,12 +462,11 @@ export default function ChatInterface({
                                 </div>
                             </div>
                             
-                            {/* WEBRTC CALLING BUTTONS */}
                             <div className="flex items-center gap-2 md:gap-3">
-                                <button onClick={() => startCall(false)} className="text-[#888] hover:text-white bg-[#111] p-2 rounded-full border border-[#333] hover:bg-[#222] transition shadow-lg" title="Voice Call">
+                                <button onClick={() => startCall(false)} className="text-[#888] hover:text-green-500 bg-[#111] p-2 rounded-full border border-[#333] hover:border-green-500/50 transition shadow-lg" title="Voice Call">
                                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                                 </button>
-                                <button onClick={() => startCall(true)} className="text-[#888] hover:text-white bg-[#111] p-2 rounded-full border border-[#333] hover:bg-[#222] transition shadow-lg" title="Video Call">
+                                <button onClick={() => startCall(true)} className="text-[#888] hover:text-blue-500 bg-[#111] p-2 rounded-full border border-[#333] hover:border-blue-500/50 transition shadow-lg" title="Video Call">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
                                 </button>
                             </div>
@@ -429,6 +490,20 @@ export default function ChatInterface({
                                     const reactionCount = Object.keys(activeReactions).length;
                                     const uniqueEmojis = Array.from(new Set(Object.values(activeReactions)));
                                     const repliedMsg = msg.reply_to_id ? messages.find((m: any) => m.id === msg.reply_to_id) : null;
+
+                                    // NEW: Render Call Logs as System Bubbles
+                                    const isCallLog = msg.content && (msg.content.startsWith('📞') || msg.content.startsWith('📹') || msg.content.startsWith('❌'));
+                                    
+                                    if (isCallLog) {
+                                        return (
+                                            <div key={msg.id} className="flex justify-center mb-4 mt-2">
+                                                <div className="bg-[#111] border border-[#333] px-4 py-1.5 rounded-full flex items-center gap-2 shadow-md">
+                                                    <span className={`text-[11px] font-medium ${msg.content.startsWith('❌') ? 'text-red-400' : 'text-slate-300'}`}>{msg.content}</span>
+                                                    <span className="text-[9px] text-[#666] border-l border-[#333] pl-2">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
 
                                     if (msg.is_deleted) {
                                         return (
@@ -595,43 +670,71 @@ export default function ChatInterface({
             </div>
 
             {/* ========================================== */}
-            {/* WEBRTC CALL OVERLAY (FULL SCREEN) */}
+            {/* NEW: WEBRTC CALL UI (FULL SCREEN OR PICTURE-IN-PICTURE) */}
             {/* ========================================== */}
             {callStatus !== 'idle' && (
-                <div className="absolute inset-0 z-[1000] bg-[#050505] flex flex-col items-center justify-center overflow-hidden rounded-xl animate-in fade-in zoom-in-95 duration-300">
+                <div className={`z-[1000] transition-all duration-500 ${isMinimized ? 'fixed bottom-6 right-6 w-64 md:w-80 h-48 md:h-56 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.8)] border border-[#444] bg-[#050505] overflow-hidden cursor-move' : 'absolute inset-0 bg-[#050505] rounded-xl flex flex-col items-center justify-center overflow-hidden animate-in fade-in zoom-in-95'}`}>
+                    
+                    {/* Background Gradient */}
                     <div className="absolute inset-0 bg-gradient-to-b from-blue-900/20 to-black pointer-events-none"></div>
                     
+                    {/* Minimize / Maximize Button */}
+                    <button onClick={() => setIsMinimized(!isMinimized)} className="absolute top-4 left-4 z-50 bg-black/50 hover:bg-black/80 border border-[#444] text-white p-2 rounded-full backdrop-blur transition shadow-lg">
+                        {isMinimized ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>}
+                    </button>
+
+                    {/* Remote Video (Friend) */}
                     <video ref={remoteVideoRef} autoPlay playsInline className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${(callStatus === 'connected' && isVideoCall) ? 'opacity-100' : 'opacity-0'}`} />
                     
-                    <div className={`absolute bottom-24 right-6 w-32 h-48 bg-black border border-[#333] rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)] z-20 transition-all duration-500 ${(isVideoCall && (callStatus === 'connected' || callStatus === 'calling')) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
+                    {/* Local Video (You) - Only show if video call is active and camera isn't off */}
+                    <div className={`absolute ${isMinimized ? 'bottom-2 right-2 w-16 h-24' : 'bottom-24 right-6 w-32 h-48'} bg-black border border-[#333] rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)] z-20 transition-all duration-500 ${(isVideoCall && !isVideoOff && (callStatus === 'connected' || callStatus === 'calling')) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
                         <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
                     </div>
 
-                    <div className={`z-10 flex flex-col items-center mb-12 transition-opacity duration-500 ${(callStatus === 'connected' && isVideoCall) ? 'opacity-0' : 'opacity-100'}`}>
-                        <div className="w-28 h-28 rounded-full bg-[#111] border-2 border-[#333] flex items-center justify-center text-slate-200 font-bold text-5xl shadow-[0_0_50px_rgba(0,0,0,0.5)] mb-6 relative">
+                    {/* Call Info (Avatar & Name) */}
+                    <div className={`z-10 flex flex-col items-center justify-center transition-opacity duration-500 ${(callStatus === 'connected' && isVideoCall && !isMinimized) ? 'opacity-0' : 'opacity-100'} ${isMinimized ? 'h-full pt-4' : 'mb-12'}`}>
+                        <div className={`${isMinimized ? 'w-12 h-12 text-xl mb-2' : 'w-28 h-28 text-5xl mb-6 border-2'} rounded-full bg-[#111] border-[#333] flex items-center justify-center text-slate-200 font-bold shadow-[0_0_50px_rgba(0,0,0,0.5)] relative`}>
                             {activeChat?.username?.charAt(0).toUpperCase() || incomingCall?.caller_name?.charAt(0).toUpperCase()}
                             {callStatus === 'ringing' && <span className="absolute inset-0 rounded-full border-4 border-blue-500 animate-ping opacity-50"></span>}
                         </div>
-                        <h2 className="text-white text-3xl font-bold mb-2 tracking-tight">{activeChat?.username || incomingCall?.caller_name}</h2>
-                        <p className="text-[#888] text-xs uppercase tracking-widest font-bold animate-pulse">
-                            {callStatus === 'calling' ? 'Calling...' : callStatus === 'ringing' ? 'Incoming Encrypted Call...' : 'Connected Securely'}
+                        <h2 className={`text-white font-bold tracking-tight ${isMinimized ? 'text-sm mb-1' : 'text-3xl mb-2'}`}>
+                            {activeChat?.username || incomingCall?.caller_name}
+                        </h2>
+                        <p className={`text-[#888] font-bold ${isMinimized ? 'text-[9px]' : 'text-xs uppercase tracking-widest animate-pulse'}`}>
+                            {callStatus === 'calling' ? 'Calling...' : callStatus === 'ringing' ? 'Incoming Encrypted Call...' : formatDuration(callDuration)}
                         </p>
                     </div>
 
-                    <div className="z-20 flex items-center gap-8">
+                    {/* Action Controls */}
+                    <div className={`z-20 flex items-center justify-center gap-4 md:gap-6 ${isMinimized ? 'absolute bottom-3 inset-x-0' : ''}`}>
                         {callStatus === 'ringing' ? (
                             <>
-                                <button onClick={rejectCall} className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center hover:bg-red-500 transition hover:scale-110 shadow-[0_0_20px_rgba(220,38,38,0.4)] text-white">
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
+                                <button onClick={rejectCall} className={`${isMinimized ? 'w-10 h-10' : 'w-16 h-16'} bg-red-600 rounded-full flex items-center justify-center hover:bg-red-500 transition hover:scale-110 shadow-[0_0_20px_rgba(220,38,38,0.4)] text-white`}>
+                                    <svg width={isMinimized ? 16 : 28} height={isMinimized ? 16 : 28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
                                 </button>
-                                <button onClick={acceptCall} className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center hover:bg-green-500 transition hover:scale-110 shadow-[0_0_20px_rgba(22,163,74,0.4)] text-white animate-bounce">
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
+                                <button onClick={acceptCall} className={`${isMinimized ? 'w-10 h-10' : 'w-16 h-16'} bg-green-600 rounded-full flex items-center justify-center hover:bg-green-500 transition hover:scale-110 shadow-[0_0_20px_rgba(22,163,74,0.4)] text-white animate-bounce`}>
+                                    <svg width={isMinimized ? 16 : 28} height={isMinimized ? 16 : 28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg>
                                 </button>
                             </>
                         ) : (
-                            <button onClick={endCall} className="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center hover:bg-red-500 transition hover:scale-110 shadow-[0_0_20px_rgba(220,38,38,0.4)] text-white">
-                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
-                            </button>
+                            <>
+                                {/* Camera Toggle */}
+                                {isVideoCall && (
+                                    <button onClick={toggleVideo} className={`${isMinimized ? 'w-10 h-10' : 'w-14 h-14'} bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/20 transition text-white border border-white/20 ${isVideoOff ? 'text-red-400 bg-red-900/20' : ''}`}>
+                                        {isVideoOff ? <svg width={isMinimized ? 16 : 20} height={isMinimized ? 16 : 20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/><line x1="1" y1="1" x2="23" y2="23"/></svg> : <svg width={isMinimized ? 16 : 20} height={isMinimized ? 16 : 20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>}
+                                    </button>
+                                )}
+                                
+                                {/* End Call */}
+                                <button onClick={callStatus === 'calling' ? cancelCall : endCall} className={`${isMinimized ? 'w-12 h-12' : 'w-16 h-16'} bg-red-600 rounded-full flex items-center justify-center hover:bg-red-500 transition hover:scale-110 shadow-[0_0_20px_rgba(220,38,38,0.4)] text-white`}>
+                                    <svg width={isMinimized ? 20 : 28} height={isMinimized ? 20 : 28} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10.68 13.31a16 16 0 0 0 3.41 2.6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7 2 2 0 0 1 1.72 2v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.42 19.42 0 0 1-3.33-2.67m-2.67-3.34a19.79 19.79 0 0 1-3.07-8.63A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91"></path><line x1="23" y1="1" x2="1" y2="23"></line></svg>
+                                </button>
+                                
+                                {/* Mic Toggle */}
+                                <button onClick={toggleMute} className={`${isMinimized ? 'w-10 h-10' : 'w-14 h-14'} bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/20 transition text-white border border-white/20 ${isMuted ? 'text-red-400 bg-red-900/20' : ''}`}>
+                                    {isMuted ? <svg width={isMinimized ? 16 : 20} height={isMinimized ? 16 : 20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg> : <svg width={isMinimized ? 16 : 20} height={isMinimized ? 16 : 20} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>}
+                                </button>
+                            </>
                         )}
                     </div>
                 </div>
@@ -662,7 +765,6 @@ export default function ChatInterface({
                 </div>
             )}
 
-            {/* IMAGE PREVIEW OVERLAY */}
             {previewData && (
                 <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" onClick={() => setPreviewData(null)}>
                     <button className="absolute top-6 right-6 text-white bg-[#222] border border-[#444] hover:bg-white hover:text-black rounded-full w-10 h-10 flex items-center justify-center font-bold transition shadow-lg z-10" onClick={() => setPreviewData(null)}>✕</button>
@@ -671,7 +773,6 @@ export default function ChatInterface({
                 </div>
             )}
 
-            {/* DELETE CONFIRMATION OVERLAY */}
             {confirmDelete && (
                 <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-[#111] border border-[#333] rounded-xl p-6 w-full max-w-xs md:max-w-sm shadow-2xl flex flex-col items-center text-center">
