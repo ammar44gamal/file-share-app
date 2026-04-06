@@ -1,50 +1,115 @@
 'use client';
 
 import NetworkBackground from '../ui/NetworkBackground';
-import Modal from '../ui/Modal';
 
 export default function AuthScreen({
-    modal, setModal, isSignUp, setIsSignUp, email, setEmail, password, setPassword,
-    username, setUsername, showPassword, setShowPassword, handleAuth, handleForgotPassword
+    isSignUp, setIsSignUp, email, setEmail, password, setPassword, 
+    username, setUsername, showPassword, setShowPassword, handleAuth, handleForgotPassword,
+    awaitingOTP, setAwaitingOTP, otpCode, setOtpCode, handleVerifyOTP // NEW PROPS
 }: any) {
+
     return (
-      <div className="flex items-center justify-center min-h-screen bg-black p-4 relative overflow-hidden">
-        <NetworkBackground />
-        <Modal modal={modal} setModal={setModal} />
-        
-        <div className="bg-[#111]/80 backdrop-blur-xl border border-[#333] p-8 md:p-10 rounded-2xl shadow-2xl w-full max-w-sm z-10">
-          <h2 className="text-2xl font-bold mb-8 text-center text-white tracking-tight italic">FileHub Access</h2>
-          
-          {isSignUp && (
-            <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} 
-                   className="w-full p-4 mb-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none" />
-          )}
-          
-          <input type="email" value={email} placeholder="Email" onChange={e => setEmail(e.target.value)} 
-                 className="w-full p-4 mb-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none" />
-          
-          <div className="relative mb-8">
-            <input type={showPassword ? "text" : "password"} value={password} placeholder="Password" onChange={e => setPassword(e.target.value)} 
-                   className="w-full p-4 bg-black/50 border border-[#333] text-white rounded-lg focus:border-white outline-none pr-12" />
-            <button onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#444] hover:text-white transition">
-                {showPassword ? "👁️" : "👁️‍🗨️"}
-            </button>
-          </div>
-          
-          <button onClick={handleAuth} className="w-full bg-white text-black py-4 rounded-lg font-bold hover:bg-[#ccc] transition uppercase tracking-widest text-xs">
-              {isSignUp ? 'Sign Up' : 'Log In'}
-          </button>
-          
-          {!isSignUp && (
-              <p onClick={handleForgotPassword} className="text-center mt-4 text-[10px] text-[#444] hover:text-white cursor-pointer transition uppercase tracking-widest font-bold">
-                  Forgot Password?
-              </p>
-          )}
-          
-          <p onClick={() => setIsSignUp(!isSignUp)} className="text-center mt-6 text-sm text-[#888] cursor-pointer hover:text-white transition">
-              {isSignUp ? 'Back to Login' : 'Create Account'}
-          </p>
+        <div className="min-h-[100dvh] bg-black flex items-center justify-center p-4 relative overflow-hidden font-sans text-white">
+            <NetworkBackground />
+            
+            <div className="bg-[#111]/80 backdrop-blur-xl border border-[#333] p-8 md:p-10 rounded-2xl shadow-2xl max-w-md w-full z-10 animate-in fade-in zoom-in duration-500">
+                
+                <div className="flex justify-center mb-8">
+                    <div className="w-12 h-12 bg-white text-black flex items-center justify-center font-black text-2xl rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.2)]">
+                        F
+                    </div>
+                </div>
+
+                {/* OTP VERIFICATION VIEW */}
+                {awaitingOTP ? (
+                    <form onSubmit={handleVerifyOTP} className="space-y-6 animate-in slide-in-from-right-8 duration-300">
+                        <div className="text-center space-y-2 mb-6">
+                            <h2 className="text-2xl font-bold tracking-tight">Verify Device</h2>
+                            <p className="text-[#888] text-xs">Enter the 6-digit security code sent to <span className="text-white">{email}</span></p>
+                        </div>
+
+                        <div className="space-y-4">
+                            <input 
+                                type="text" 
+                                maxLength={6}
+                                value={otpCode} 
+                                onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} // Only allow numbers
+                                placeholder="000000" 
+                                className="w-full bg-black border border-[#333] focus:border-white text-white p-4 rounded-xl outline-none transition text-center text-3xl tracking-[0.5em] font-mono font-bold"
+                                required 
+                            />
+                        </div>
+
+                        <button type="submit" disabled={otpCode.length !== 6} className="w-full bg-white text-black font-black p-3.5 rounded-xl uppercase tracking-widest hover:bg-[#ddd] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+                            Authorize
+                        </button>
+                        
+                        <div className="text-center mt-4">
+                            <button type="button" onClick={() => setAwaitingOTP(false)} className="text-[#666] text-xs hover:text-white transition font-bold uppercase tracking-wider">
+                                ← Back to Sign In
+                            </button>
+                        </div>
+                    </form>
+                ) : (
+                    /* STANDARD LOGIN / SIGNUP VIEW */
+                    <form onSubmit={handleAuth} className="space-y-5 animate-in slide-in-from-left-8 duration-300">
+                        <div className="text-center space-y-1 mb-6">
+                            <h2 className="text-2xl font-bold tracking-tight">{isSignUp ? 'Establish Node' : 'System Login'}</h2>
+                            <p className="text-[#888] text-xs">{isSignUp ? 'Join the distributed network' : 'Authenticate to access your files'}</p>
+                        </div>
+
+                        <div className="space-y-4">
+                            {isSignUp && (
+                                <input 
+                                    type="text" 
+                                    value={username} 
+                                    onChange={(e) => setUsername(e.target.value)} 
+                                    placeholder="Unique Username" 
+                                    className="w-full bg-black border border-[#333] focus:border-white text-white p-3 rounded-lg outline-none transition text-sm"
+                                />
+                            )}
+                            <input 
+                                type="email" 
+                                value={email} 
+                                onChange={(e) => setEmail(e.target.value)} 
+                                placeholder="Email Address" 
+                                className="w-full bg-black border border-[#333] focus:border-white text-white p-3 rounded-lg outline-none transition text-sm"
+                                required 
+                            />
+                            <div className="relative">
+                                <input 
+                                    type={showPassword ? "text" : "password"} 
+                                    value={password} 
+                                    onChange={(e) => setPassword(e.target.value)} 
+                                    placeholder="Secure Password" 
+                                    className="w-full bg-black border border-[#333] focus:border-white text-white p-3 rounded-lg outline-none transition text-sm pr-10"
+                                    required 
+                                />
+                                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#666] hover:text-white text-xs font-bold transition">
+                                    {showPassword ? "HIDE" : "SHOW"}
+                                </button>
+                            </div>
+                        </div>
+
+                        <button type="submit" className="w-full bg-white text-black font-black p-3.5 rounded-xl uppercase tracking-widest hover:bg-[#ddd] transition shadow-[0_0_15px_rgba(255,255,255,0.1)] mt-2">
+                            {isSignUp ? 'Initialize' : 'Access'}
+                        </button>
+
+                        <div className="flex flex-col items-center gap-3 pt-4 border-t border-[#222]">
+                            <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="text-[#888] text-xs hover:text-white transition">
+                                {isSignUp ? 'Already have a node? ' : 'Need access? '}
+                                <span className="font-bold underline underline-offset-4 decoration-[#444] hover:decoration-white text-white">{isSignUp ? 'Sign In' : 'Sign Up'}</span>
+                            </button>
+                            
+                            {!isSignUp && (
+                                <button type="button" onClick={handleForgotPassword} className="text-[#666] text-[10px] hover:text-white transition uppercase tracking-widest font-bold">
+                                    Forgot Password?
+                                </button>
+                            )}
+                        </div>
+                    </form>
+                )}
+            </div>
         </div>
-      </div>
     );
 }

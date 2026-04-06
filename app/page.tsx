@@ -23,6 +23,10 @@ export default function DistributedFileHub() {
   const [profileName, setProfileName] = useState('User');
   const [isAdmin, setIsAdmin] = useState(false);
   
+  // NEW: OTP State Variables
+  const [awaitingOTP, setAwaitingOTP] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+
   const [filesList, setFilesList] = useState<any[]>([]);
   const [folders, setFolders] = useState<any[]>([]);
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
@@ -321,19 +325,48 @@ export default function DistributedFileHub() {
     else { setNewMessage(''); setChatFile(null); if (chatFileInputRef.current) chatFileInputRef.current.value = ""; }
   };
 
-  const handleAuth = async () => {
+  // =========================================================================
+  // CHANGED: The Auth handler now smoothly slides to the OTP screen!
+  // =========================================================================
+  const handleAuth = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (isSignUp) {
       if (!username) return showAlert("Notice", "Please enter a Username.");
       const { data: isAvailable } = await supabase.rpc('check_username_available', { requested_username: username });
       if (isAvailable === false) return showAlert("Notice", "That username is already taken.");
       const { error } = await supabase.auth.signUp({ email, password, options: { data: { custom_username: username } } });
+      
       if (error) return showAlert("Error", error.message);
-      showAlert("Success", "Verification email sent!");
+      
+      // Success! Move to the OTP Screen
+      setAwaitingOTP(true); 
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) return showAlert("Error", error.message);
     }
   };
+
+  // NEW: Function to verify the 6-digit code
+  const handleVerifyOTP = async (e?: React.FormEvent) => {
+      e?.preventDefault();
+      if (!otpCode || otpCode.length !== 6) return showAlert("Notice", "Please enter the full 6-digit code.");
+      
+      const { error } = await supabase.auth.verifyOtp({ 
+          email, 
+          token: otpCode, 
+          type: 'signup' 
+      });
+      
+      if (error) {
+          showAlert("Verification Failed", "Incorrect or expired code. Please try again.");
+      } else {
+          // Success! Supabase logs them in instantly in the background.
+          setAwaitingOTP(false);
+          setOtpCode('');
+      }
+  };
+  // =========================================================================
+
   const handleForgotPassword = async () => {
     if (!email) return showAlert("Notice", "Please enter your email address first.");
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
@@ -405,6 +438,25 @@ export default function DistributedFileHub() {
     });
   };
 
+  const handleDeleteMessage = async (msgId: string, filePath: string | null) => {
+      showPrompt("Delete Message", "Type 'DELETE' to remove this message for everyone.", async (val) => {
+          if (val.trim().toUpperCase() !== 'DELETE') return showAlert("Error", "Validation failed.");
+          
+          if (filePath) {
+              await supabase.storage.from('user-files').remove([filePath]);
+          }
+          
+          const { error } = await supabase.from('messages').update({
+              content: '',
+              file_name: null,
+              file_path: null,
+              is_deleted: true
+          }).eq('id', msgId);
+
+          if (error) showAlert("Database Error", error.message);
+      });
+  };
+
   const toggleFolderStatus = async (folderId: string, column: string, currentStatus: boolean) => {
     const { error } = await supabase.from('folders').update({ [column]: !currentStatus }).eq('id', folderId);
     if (error) showAlert("Database Error", error.message); else fetchFolders();
@@ -418,7 +470,13 @@ export default function DistributedFileHub() {
   const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
   const isLockedForUser = selectedFolder && currentFolder?.is_locked && !canManageFolder;
 
-  if (!user) return <AuthScreen {...{modal, setModal, isSignUp, setIsSignUp, email, setEmail, password, setPassword, username, setUsername, showPassword, setShowPassword, handleAuth, handleForgotPassword}} />;
+  // CHANGED: We now pass the OTP props into your AuthScreen
+  if (!user) return (
+      <>
+          <Modal modal={modal} setModal={setModal} showPassword={showPassword} setShowPassword={setShowPassword} />
+          <AuthScreen {...{modal, setModal, isSignUp, setIsSignUp, email, setEmail, password, setPassword, username, setUsername, showPassword, setShowPassword, handleAuth, handleForgotPassword, awaitingOTP, setAwaitingOTP, otpCode, setOtpCode, handleVerifyOTP}} />
+      </>
+  );
 
   return (
     <div className="flex h-[100dvh] bg-black text-white font-sans selection:bg-white selection:text-black relative overflow-hidden">
