@@ -54,8 +54,8 @@ export default function AuthScreen({
                 ) : (
                     <form onSubmit={handleAuth} className="space-y-5 animate-in slide-in-from-left-8 duration-300">
                         <div className="text-center space-y-1 mb-6">
-                            <h2 className="text-2xl font-bold tracking-tight">{isSignUp ? 'Establish Node' : 'System Login'}</h2>
-                            <p className="text-[#888] text-xs">{isSignUp ? 'Join the distributed network' : 'Authenticate to access your files'}</p>
+                            <h2 className="text-2xl font-bold tracking-tight">{isSignUp ? 'Establish Account' : 'System Login'}</h2>
+                            <p className="text-[#888] text-xs">{isSignUp ? 'Join the distributed network' : 'Authenticate to access your account'}</p>
                         </div>
 
                         <div className="space-y-4">
@@ -92,12 +92,12 @@ export default function AuthScreen({
                         </div>
 
                         <button type="submit" className="w-full bg-white text-black font-black p-3.5 rounded-xl uppercase tracking-widest hover:bg-[#ddd] transition shadow-[0_0_15px_rgba(255,255,255,0.1)] mt-2">
-                            {isSignUp ? 'Initialize' : 'Access'}
+                            {isSignUp ? 'Create Account' : 'Login'}
                         </button>
 
                         <div className="flex flex-col items-center gap-3 pt-4 border-t border-[#222]">
                             <button type="button" onClick={() => setIsSignUp(!isSignUp)} className="text-[#888] text-xs hover:text-white transition">
-                                {isSignUp ? 'Already have a node? ' : 'Need access? '}
+                                {isSignUp ? 'Already have an account? ' : 'Need access? '}
                                 <span className="font-bold underline underline-offset-4 decoration-[#444] hover:decoration-white text-white">{isSignUp ? 'Sign In' : 'Sign Up'}</span>
                             </button>
                             
