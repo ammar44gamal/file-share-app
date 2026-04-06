@@ -20,6 +20,21 @@ export default function ChatInterface({
     const [reactingTo, setReactingTo] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
+    // NEW: Layout & Sorting States
+    const [leftView, setLeftView] = useState<'chats' | 'contacts'>('chats');
+    const [pinnedChats, setPinnedChats] = useState<string[]>([]);
+    const [lastActivity, setLastActivity] = useState<Record<string, number>>({});
+
+    // Load saved pins and activity timestamps from local storage
+    useEffect(() => {
+        const savedPins = localStorage.getItem('filehub_pinned_chats');
+        if (savedPins) setPinnedChats(JSON.parse(savedPins));
+
+        const savedActivity = localStorage.getItem('filehub_chat_activity');
+        if (savedActivity) setLastActivity(JSON.parse(savedActivity));
+    }, []);
+
+    // Scroll to bottom of chat
     useEffect(() => {
         setTimeout(() => {
             if (chatScrollRef.current) {
@@ -28,29 +43,76 @@ export default function ChatInterface({
         }, 10);
     }, [messages, activeChat, isTyping, chatScrollRef]);
 
+    // NEW: Update activity timestamp when messages change in the active chat
+    useEffect(() => {
+        if (messages.length > 0 && activeChat) {
+            setLastActivity(prev => {
+                const updated = { ...prev, [activeChat.friend_id]: Date.now() };
+                localStorage.setItem('filehub_chat_activity', JSON.stringify(updated));
+                return updated;
+            });
+        }
+    }, [messages]);
+
+    // NEW: Update activity timestamp when unread notifications arrive
+    useEffect(() => {
+        if (unreadSenders.length > 0) {
+            setLastActivity(prev => {
+                const updated = { ...prev };
+                unreadSenders.forEach((id: string) => { updated[id] = Date.now(); });
+                localStorage.setItem('filehub_chat_activity', JSON.stringify(updated));
+                return updated;
+            });
+        }
+    }, [unreadSenders]);
+
+    const togglePin = (friendId: string) => {
+        setPinnedChats(prev => {
+            const isPinned = prev.includes(friendId);
+            let newPins = [];
+            if (isPinned) {
+                newPins = prev.filter(id => id !== friendId);
+            } else if (prev.length < 3) {
+                newPins = [...prev, friendId];
+            } else {
+                alert("You can only pin up to 3 chats.");
+                return prev;
+            }
+            localStorage.setItem('filehub_pinned_chats', JSON.stringify(newPins));
+            return newPins;
+        });
+    };
+
+    // NEW: The Dynamic Sorting Logic! (Pinned -> Unread -> Newest Activity)
+    const sortedFriends = [...friends].sort((a, b) => {
+        const aPinned = pinnedChats.includes(a.friend_id);
+        const bPinned = pinnedChats.includes(b.friend_id);
+        if (aPinned && !bPinned) return -1;
+        if (!aPinned && bPinned) return 1;
+
+        const aUnread = unreadSenders.includes(a.friend_id);
+        const bUnread = unreadSenders.includes(b.friend_id);
+        if (aUnread && !bUnread) return -1;
+        if (!aUnread && bUnread) return 1;
+
+        const aTime = lastActivity[a.friend_id] || 0;
+        const bTime = lastActivity[b.friend_id] || 0;
+        return bTime - aTime; 
+    });
+
+
     const handlePreview = async (path: string, name: string) => {
         const { data } = await supabase.storage.from('user-files').createSignedUrl(path, 3600);
-        if (data?.signedUrl) {
-            setPreviewData({ url: data.signedUrl, name });
-        }
+        if (data?.signedUrl) setPreviewData({ url: data.signedUrl, name });
     };
 
     const executeDelete = async () => {
         if (!confirmDelete) return;
         const { id, path } = confirmDelete;
-
         setMessages((prev: any[]) => prev.map(m => m.id === id ? { ...m, is_deleted: true, content: '', file_name: null, file_path: null } : m));
         setConfirmDelete(null);
-
-        if (path) {
-            await supabase.storage.from('user-files').remove([path]);
-        }
-        await supabase.from('messages').update({
-            content: '',
-            file_name: null,
-            file_path: null,
-            is_deleted: true
-        }).eq('id', id);
+        if (path) await supabase.storage.from('user-files').remove([path]);
+        await supabase.from('messages').update({ content: '', file_name: null, file_path: null, is_deleted: true }).eq('id', id);
     };
 
     const parseReactions = (reactions: any) => {
@@ -64,296 +126,315 @@ export default function ChatInterface({
     const handleReact = async (msgId: string, emoji: string, currentReactions: any) => {
         const reactions = parseReactions(currentReactions);
         const newReactions = { ...reactions };
-
-        if (newReactions[user.id] === emoji) {
-            delete newReactions[user.id];
-        } else {
-            newReactions[user.id] = emoji; 
-        }
-
+        if (newReactions[user.id] === emoji) delete newReactions[user.id];
+        else newReactions[user.id] = emoji; 
         setMessages((prev: any[]) => prev.map(m => m.id === msgId ? { ...m, reactions: newReactions } : m));
         setReactingTo(null);
-
         await supabase.from('messages').update({ reactions: newReactions }).eq('id', msgId);
     };
 
     return (
-        <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative">
+        <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative bg-[#0a0a0a] md:bg-[#111]/80 md:backdrop-blur-md md:border border-[#333] rounded-xl shadow-2xl overflow-hidden flex flex-col md:flex-row">
             
-            {/* The overlay was removed from here! */}
-
-            <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 md:gap-6 h-full">
+            {/* WHATSAPP LAYOUT: LEFT SIDEBAR */}
+            <div className={`w-full md:w-72 lg:w-80 flex-col border-r border-[#222] bg-[#111] shrink-0 h-full ${activeChat ? 'hidden md:flex' : 'flex'}`}>
                 
-                <div className="lg:col-span-2 lg:order-2 bg-[#111]/80 backdrop-blur-md border border-[#333] p-3 md:p-4 rounded-xl shadow-2xl flex flex-col h-[65vh] md:h-[75vh] lg:h-[80vh] min-h-[500px]">
-                    
-                    <h3 className="font-bold text-base mb-3 text-white pl-1">Connected Friends</h3>
-                    
-                    <div className="flex gap-2 overflow-x-auto pb-2 border-b border-[#222] mb-2 scrollbar-hide shrink-0">
-                        {friends.length === 0 ? <p className="text-[11px] text-[#666] italic pl-1">No established connections.</p> : (
-                            friends.map((f: any) => (
-                                <button key={f.friendship_id} onClick={() => setActiveChat(f)} className={`relative flex-shrink-0 px-3 py-1.5 rounded-md border text-[11px] font-bold transition ${activeChat?.friendship_id === f.friendship_id ? 'bg-white text-black border-white' : 'bg-black text-[#888] border-[#333] hover:border-white hover:text-white'}`}>
-                                    {f.username}
-                                    {unreadSenders.includes(f.friend_id) && <span className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-black animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>}
-                                </button>
-                            ))
-                        )}
-                    </div>
-
-                    <div className="flex-1 bg-black rounded-lg border border-[#222] flex flex-col relative overflow-hidden h-full">
-                        {!activeChat ? (
-                            <div className="flex-1 flex flex-col items-center justify-center relative p-6 text-center">
-                                <NetworkBackground />
-                                <p className="text-[#444] text-[10px] font-bold uppercase tracking-widest italic z-10">Select a node to establish secure channel</p>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="px-3 py-2 border-b border-[#222] bg-[#111] z-10 flex justify-between items-center shrink-0">
-                                    <div>
-                                        <p className="text-green-500 text-[8px] font-bold uppercase tracking-widest">Secure Channel</p>
-                                        <p className="text-white font-bold text-xs leading-tight">{activeChat.username}</p>
-                                    </div>
-                                    <button onClick={() => setActiveChat(null)} className="text-[#888] hover:text-white text-[10px] font-bold px-2 py-1 border border-[#333] rounded hover:bg-[#333]">✕</button>
-                                </div>
-
-                                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1.5 z-10 relative">
-                                    
-                                    {/* CHANGED: We moved the overlay INSIDE the scroll container to perfectly share the z-index math */}
-                                    {reactingTo && (
-                                        <div className="fixed inset-0 z-[40]" onClick={() => setReactingTo(null)}></div>
-                                    )}
-
-                                    {messages.length === 0 ? (
-                                        <div className="h-full flex items-center justify-center text-[#444] text-[10px] font-bold uppercase tracking-widest italic text-center px-4">
-                                            No messages yet. Begin transmission.
-                                        </div>
-                                    ) : (
-                                        messages.map((msg: any) => {
-                                            const isMine = msg.sender_id === user.id;
-                                            
-                                            const activeReactions = parseReactions(msg.reactions);
-                                            const reactionCount = Object.keys(activeReactions).length;
-                                            const uniqueEmojis = Array.from(new Set(Object.values(activeReactions)));
-
-                                            if (msg.is_deleted) {
-                                                return (
-                                                    <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-3`}>
-                                                        <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-3 py-2 shadow-sm flex items-center gap-2 ${isMine ? 'bg-[#111] border border-[#222] text-[#666] rounded-br-none' : 'bg-[#0a0a0a] border border-[#222] text-[#666] rounded-bl-none'}`}>
-                                                            <span className="text-[10px] opacity-50">🚫</span>
-                                                            <p className="text-[11px] italic opacity-70">This message was deleted</p>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            }
-
-                                            const isVoiceNote = msg.file_name && msg.file_name.startsWith('Voice Note');
-                                            const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
-                                            
-                                            return (
-                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-5 ${reactingTo === msg.id ? 'z-[50]' : 'z-10'}`}>
-                                                    
-                                                    {reactingTo === msg.id && (
-                                                        <div className={`absolute bottom-[calc(100%+4px)] ${isMine ? 'right-0' : 'left-0'} z-[70] bg-[#222] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.5)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
-                                                            {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
-                                                                <button 
-                                                                    key={emoji} 
-                                                                    // CHANGED: Added stopPropagation so the click doesn't hit the invisible background
-                                                                    onClick={(e) => { e.stopPropagation(); handleReact(msg.id, emoji, msg.reactions); }} 
-                                                                    className="hover:scale-125 hover:-translate-y-1 transition-all text-xl focus:outline-none"
-                                                                >
-                                                                    {emoji}
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-
-                                                    <div className={`opacity-100 md:opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all duration-200 shrink-0 z-10 ${isMine ? 'order-1' : 'order-2'}`}>
-                                                        <button 
-                                                            onClick={() => setReactingTo(msg.id)} 
-                                                            className="text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors" 
-                                                            title="React"
-                                                        >
-                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
-                                                        </button>
-                                                        {isMine && (
-                                                            <button 
-                                                                onClick={() => setConfirmDelete({id: msg.id, path: msg.file_path})} 
-                                                                className="text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors shrink-0" 
-                                                                title="Delete"
-                                                            >
-                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                                                            </button>
-                                                        )}
-                                                    </div>
-
-                                                    <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-2.5 py-1.5 shadow-md z-10 relative ${isMine ? 'order-2 bg-blue-600 text-white rounded-br-none' : 'order-1 bg-[#222] text-slate-200 rounded-bl-none'}`}>
-                                                        
-                                                        {reactionCount > 0 && (
-                                                            <div className={`absolute -bottom-3.5 right-2 bg-[#222] border-[3px] border-black rounded-full px-1.5 py-0.5 text-[12px] shadow-sm flex items-center justify-center gap-0.5 z-20`}>
-                                                                {uniqueEmojis.map((emoji: any, i) => (
-                                                                    <span key={i} className="leading-none">{emoji}</span>
-                                                                ))}
-                                                                {reactionCount > 1 && <span className="text-[#aaa] text-[9px] font-bold ml-0.5 leading-none">{reactionCount}</span>}
-                                                            </div>
-                                                        )}
-                                                        
-                                                        {msg.content && <p className="text-xs whitespace-pre-wrap break-words leading-snug">{msg.content}</p>}
-                                                        
-                                                        {msg.file_name && (
-                                                            <div className={`mt-1 flex flex-col gap-1 p-1 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#444]'}`}>
-                                                                {isVoiceNote ? (
-                                                                    <VoiceNotePlayer path={msg.file_path} isMine={isMine} />
-                                                                ) : (
-                                                                    <div 
-                                                                        className={`overflow-hidden rounded ${isImageFile ? 'cursor-pointer hover:opacity-90 transition' : ''}`}
-                                                                        onClick={() => isImageFile && handlePreview(msg.file_path, msg.file_name)}
-                                                                        title={isImageFile ? "Click to expand" : ""}
-                                                                    >
-                                                                        <FileThumbnail path={msg.file_path} fileName={msg.file_name} isChat={true} />
-                                                                    </div>
-                                                                )}
-                                                                
-                                                                {!isVoiceNote && (
-                                                                    <div className="flex items-center justify-between gap-2 px-1 mt-0.5">
-                                                                        <span className="text-[9px] truncate max-w-[80px] md:max-w-[120px] font-medium opacity-80">{msg.file_name}</span>
-                                                                        <div className="flex gap-1 shrink-0">
-                                                                            {isImageFile && (
-                                                                                <button type="button" onClick={(e) => { e.stopPropagation(); handlePreview(msg.file_path, msg.file_name); }} className="text-[9px] font-bold bg-black/30 hover:bg-black/50 px-1.5 py-0.5 rounded transition">👁️</button>
-                                                                            )}
-                                                                            <button type="button" onClick={(e) => { e.stopPropagation(); handleDownload(msg.file_path, msg.file_name); }} className="text-[9px] font-bold bg-black/30 hover:bg-black/50 px-1.5 py-0.5 rounded transition">💾</button>
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                        
-                                                        <span className={`text-[7px] block mt-0.5 flex items-center ${isMine ? 'justify-end gap-1' : 'justify-start opacity-60'}`}>
-                                                            <span className="opacity-90">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                            {isMine && (
-                                                                <span className={`text-[10px] tracking-tighter ${msg.is_read ? 'text-[#38bdf8] font-black' : 'text-black opacity-70 font-bold'}`}>
-                                                                    ✓✓
-                                                                </span>
-                                                            )}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            )
-                                        })
-                                    )}
-                                    {isTyping && (
-                                        <div className="flex justify-start">
-                                            <div className="bg-[#222] text-[#888] text-[9px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-xl rounded-bl-none animate-pulse">
-                                                {activeChat.username} is typing...
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div ref={messagesEndRef} />
-                                </div>
-
-                                <form onSubmit={handleSendMessage} className="p-2 bg-[#111] border-t border-[#222] z-10 flex gap-2 items-center shrink-0">
-                                    {isRecording ? (
-                                        <div className="flex-1 bg-red-900/20 border border-red-500/50 rounded-lg flex items-center justify-between p-2 transition">
-                                            <div className="flex items-center gap-2">
-                                                <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
-                                                <span className="text-red-500 text-[10px] font-bold tracking-widest uppercase">Rec...</span>
-                                            </div>
-                                            <button type="button" onClick={cancelRecording} className="text-red-400 hover:text-red-300 text-[9px] font-bold uppercase tracking-widest transition">Cancel ✕</button>
-                                        </div>
-                                    ) : (
-                                        <div className="flex-1 bg-black border border-[#333] rounded-lg flex items-center pr-1 focus-within:border-white transition">
-                                            <input 
-                                                type="text" 
-                                                value={newMessage} 
-                                                onChange={handleTyping}
-                                                placeholder="Type message..." 
-                                                className="w-full bg-transparent text-white text-xs p-2 outline-none"
-                                            />
-                                            <input type="file" ref={chatFileInputRef} onChange={e => setChatFile(e.target.files?.[0] || null)} className="hidden" id="chat-file" />
-                                            <label htmlFor="chat-file" className={`cursor-pointer px-2 text-xs hover:text-white transition flex items-center gap-1 ${chatFile ? 'text-green-500 font-bold' : 'text-[#666]'}`} title={chatFile ? chatFile.name : "Attach file"}>
-                                                📎 {chatFile && <span className="text-[8px] truncate max-w-[50px] hidden sm:inline-block">{chatFile.name}</span>}
-                                            </label>
-                                        </div>
-                                    )}
-
-                                    {isRecording ? (
-                                        <button type="button" onClick={stopRecordingAndSend} className="bg-red-600 text-white font-bold px-4 py-2 rounded-lg text-[9px] uppercase tracking-widest hover:bg-red-500 transition shadow-lg shrink-0">
-                                            Send
-                                        </button>
-                                    ) : (
-                                        <>
-                                            <button type="button" onClick={startRecording} className="bg-[#222] text-white hover:bg-[#333] p-2 rounded-lg transition shrink-0" title="Voice Note">
-                                                🎤
-                                            </button>
-                                            <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-4 py-2 rounded-lg text-[9px] uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shrink-0">
-                                                Send
-                                            </button>
-                                        </>
-                                    )}
-                                </form>
-                            </>
-                        )}
-                    </div>
+                {/* Sidebar Header */}
+                <div className="p-4 border-b border-[#222] flex justify-between items-center bg-[#161616]">
+                    <h2 className="font-bold text-white text-sm tracking-wide">
+                        {leftView === 'chats' ? 'Messages' : 'Network Nodes'}
+                    </h2>
+                    <button 
+                        onClick={() => setLeftView(leftView === 'chats' ? 'contacts' : 'chats')} 
+                        className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#222] hover:bg-[#333] px-2.5 py-1.5 rounded transition"
+                    >
+                        {leftView === 'chats' ? '+ Add' : '← Back'}
+                    </button>
                 </div>
 
-                <div className="space-y-4 md:space-y-6 flex-shrink-0 lg:col-span-1 lg:order-1">
-                    <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-4 md:p-5 rounded-xl shadow-2xl">
-                        <h3 className="font-bold text-base mb-3 text-white">Find Friends</h3>
-                        <div className="flex gap-2 mb-3">
-                            <input type="text" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Enter exact username..." className="flex-1 bg-black border border-[#333] text-white text-xs p-2.5 rounded-lg focus:border-white outline-none w-full"/>
-                            <button onClick={handleSearchUsers} className="bg-white text-black font-bold text-[10px] px-3 rounded-lg uppercase tracking-widest hover:bg-[#ccc] transition">Scan</button>
-                        </div>
-                        <div className="space-y-2">
-                            {searchResults.map((r: any) => (
-                                <div key={r.id} className="flex items-center justify-between bg-black p-2.5 rounded border border-[#222]">
-                                    <span className="text-xs font-bold text-slate-200">{r.username}</span>
-                                    <button onClick={() => sendFriendRequest(r.id)} className="text-[9px] font-bold text-blue-500 border border-blue-900/50 bg-blue-500/10 px-2 py-1 rounded hover:bg-blue-500/20 uppercase tracking-widest transition">Connect</button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="bg-[#111]/80 backdrop-blur-md border border-[#333] p-4 md:p-5 rounded-xl shadow-2xl">
-                        <h3 className="font-bold text-base mb-3 text-white flex items-center justify-between">
-                            Incoming Connections 
-                            {friendRequests.length > 0 && <span className="bg-red-600 text-white text-[9px] px-2 py-0.5 rounded-full">{friendRequests.length}</span>}
-                        </h3>
-                        {friendRequests.length === 0 ? <p className="text-[11px] text-[#666] italic">No pending requests.</p> : (
-                            <div className="space-y-2">
-                                {friendRequests.map((req: any) => (
-                                    <div key={req.id} className="flex items-center justify-between bg-black p-2.5 rounded border border-[#222]">
-                                        <span className="text-xs font-bold text-slate-200">{req.username}</span>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => handleRequestAction(req.id, 'accept')} className="text-[9px] font-bold text-green-500 hover:text-green-400 uppercase tracking-widest transition">Accept</button>
-                                            <button onClick={() => handleRequestAction(req.id, 'decline')} className="text-[9px] font-bold text-red-500 hover:text-red-400 uppercase tracking-widest transition">Reject</button>
+                {/* Sidebar Content: Chats View */}
+                {leftView === 'chats' && (
+                    <div className="flex-1 overflow-y-auto scrollbar-hide">
+                        {friends.length === 0 ? (
+                            <div className="p-6 text-center text-xs text-[#666] italic">No established connections. Click '+ Add' to find users.</div>
+                        ) : (
+                            sortedFriends.map((f: any) => {
+                                const isPinned = pinnedChats.includes(f.friend_id);
+                                const isUnread = unreadSenders.includes(f.friend_id);
+                                const isActive = activeChat?.friendship_id === f.friendship_id;
+                                
+                                return (
+                                    <div 
+                                        key={f.friendship_id} 
+                                        onClick={() => setActiveChat(f)} 
+                                        className={`group flex items-center gap-3 p-3 cursor-pointer border-b border-[#222] transition ${isActive ? 'bg-[#222]' : 'hover:bg-[#1a1a1a]'}`}
+                                    >
+                                        {/* Profile Circle Node */}
+                                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-900 to-indigo-900 border border-[#444] flex items-center justify-center text-white font-bold text-lg shrink-0 shadow-inner relative">
+                                            {f.username.charAt(0).toUpperCase()}
+                                            {isUnread && <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-blue-500 rounded-full border-2 border-[#111]"></span>}
                                         </div>
+                                        
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-center mb-0.5">
+                                                <h4 className={`text-[13px] truncate ${isUnread ? 'font-bold text-white' : 'text-slate-200'}`}>{f.username}</h4>
+                                                {/* Pin Icon */}
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); togglePin(f.friend_id); }} 
+                                                    className={`text-[10px] p-1 rounded-full transition ${isPinned ? 'text-blue-500 opacity-100' : 'text-[#555] opacity-0 group-hover:opacity-100 hover:text-white hover:bg-[#333]'}`}
+                                                    title={isPinned ? "Unpin Chat" : "Pin Chat"}
+                                                >
+                                                    📌
+                                                </button>
+                                            </div>
+                                            <p className={`text-[11px] truncate ${isUnread ? 'text-blue-400 font-medium' : 'text-[#666]'}`}>
+                                                {isUnread ? 'New encrypted message' : 'Tap to view channel...'}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )
+                            })
+                        )}
+                    </div>
+                )}
+
+                {/* Sidebar Content: Contacts / Find Friends View */}
+                {leftView === 'contacts' && (
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                        <div>
+                            <h3 className="text-[#666] text-[10px] font-bold uppercase tracking-widest mb-2">Find Friends</h3>
+                            <div className="flex gap-2">
+                                <input type="text" value={searchQuery} onChange={e=>setSearchQuery(e.target.value)} placeholder="Enter exact username..." className="flex-1 bg-black border border-[#333] text-white text-xs p-2.5 rounded-lg focus:border-white outline-none w-full"/>
+                                <button onClick={handleSearchUsers} className="bg-white text-black font-bold text-[10px] px-3 rounded-lg uppercase tracking-widest hover:bg-[#ccc] transition">Scan</button>
+                            </div>
+                            <div className="space-y-2 mt-3">
+                                {searchResults.map((r: any) => (
+                                    <div key={r.id} className="flex items-center justify-between bg-black p-2.5 rounded border border-[#222]">
+                                        <span className="text-xs font-bold text-slate-200">{r.username}</span>
+                                        <button onClick={() => sendFriendRequest(r.id)} className="text-[9px] font-bold text-blue-500 border border-blue-900/50 bg-blue-500/10 px-2 py-1 rounded hover:bg-blue-500/20 uppercase tracking-widest transition">Connect</button>
                                     </div>
                                 ))}
                             </div>
-                        )}
+                        </div>
+
+                        <div>
+                            <h3 className="text-[#666] text-[10px] font-bold uppercase tracking-widest mb-2 flex items-center justify-between">
+                                Incoming Requests
+                                {friendRequests.length > 0 && <span className="bg-red-600 text-white text-[9px] px-1.5 py-0.5 rounded-md">{friendRequests.length}</span>}
+                            </h3>
+                            {friendRequests.length === 0 ? <p className="text-[11px] text-[#444] italic">No pending requests.</p> : (
+                                <div className="space-y-2">
+                                    {friendRequests.map((req: any) => (
+                                        <div key={req.id} className="flex items-center justify-between bg-black p-2.5 rounded border border-[#222]">
+                                            <span className="text-xs font-bold text-slate-200">{req.username}</span>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleRequestAction(req.id, 'accept')} className="text-[10px] p-1.5 rounded bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-black transition" title="Accept">✓</button>
+                                                <button onClick={() => handleRequestAction(req.id, 'decline')} className="text-[10px] p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition" title="Reject">✕</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
+                )}
+            </div>
+
+            {/* WHATSAPP LAYOUT: MAIN CHAT AREA */}
+            <div className={`flex-1 flex-col relative h-full bg-black ${!activeChat ? 'hidden md:flex' : 'flex'}`}>
+                
+                {!activeChat ? (
+                    <div className="flex-1 flex flex-col items-center justify-center relative p-6 text-center">
+                        <NetworkBackground />
+                        <div className="bg-[#111]/80 backdrop-blur border border-[#333] py-2 px-4 rounded-full z-10">
+                            <p className="text-[#888] text-[10px] font-bold uppercase tracking-widest">Select a node to view encrypted messages</p>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        {/* Active Chat Header */}
+                        <div className="px-4 py-3 border-b border-[#222] bg-[#161616] z-10 flex items-center gap-3 shrink-0">
+                            <button onClick={() => setActiveChat(null)} className="md:hidden text-[#888] hover:text-white pr-2 border-r border-[#333]">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
+                            </button>
+                            
+                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-900 to-indigo-900 border border-[#444] flex items-center justify-center text-white font-bold shrink-0">
+                                {activeChat.username.charAt(0).toUpperCase()}
+                            </div>
+                            
+                            <div className="flex-1">
+                                <p className="text-white font-bold text-sm leading-tight">{activeChat.username}</p>
+                                <p className="text-green-500 text-[9px] font-bold uppercase tracking-widest">End-to-End Encrypted</p>
+                            </div>
+                        </div>
+
+                        {/* Messages List */}
+                        <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 md:p-6 space-y-1.5 z-10 relative bg-[#0a0a0a]">
+                            
+                            {reactingTo && (
+                                <div className="fixed inset-0 z-[40]" onClick={() => setReactingTo(null)}></div>
+                            )}
+
+                            {messages.length === 0 ? (
+                                <div className="h-full flex items-center justify-center">
+                                    <div className="bg-[#111] border border-[#333] py-2 px-4 rounded-xl text-[#666] text-[11px] font-medium text-center shadow-lg">
+                                        End-to-end encrypted connection established.<br/>Messages cannot be intercepted by third parties.
+                                    </div>
+                                </div>
+                            ) : (
+                                messages.map((msg: any) => {
+                                    const isMine = msg.sender_id === user.id;
+                                    const activeReactions = parseReactions(msg.reactions);
+                                    const reactionCount = Object.keys(activeReactions).length;
+                                    const uniqueEmojis = Array.from(new Set(Object.values(activeReactions)));
+
+                                    if (msg.is_deleted) {
+                                        return (
+                                            <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-3`}>
+                                                <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-3 py-2 shadow-sm flex items-center gap-2 ${isMine ? 'bg-[#111] border border-[#222] text-[#666] rounded-br-none' : 'bg-[#161616] border border-[#222] text-[#666] rounded-bl-none'}`}>
+                                                    <span className="text-[10px] opacity-50">🚫</span>
+                                                    <p className="text-[11px] italic opacity-70">This message was deleted</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    const isVoiceNote = msg.file_name && msg.file_name.startsWith('Voice Note');
+                                    const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
+                                    
+                                    return (
+                                        <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-5 ${reactingTo === msg.id ? 'z-[50]' : 'z-10'}`}>
+                                            
+                                            {reactingTo === msg.id && (
+                                                <div className={`absolute bottom-[calc(100%+4px)] ${isMine ? 'right-0' : 'left-0'} z-[70] bg-[#222] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.5)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
+                                                    {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
+                                                        <button 
+                                                            key={emoji} 
+                                                            onClick={(e) => { e.stopPropagation(); handleReact(msg.id, emoji, msg.reactions); }} 
+                                                            className="hover:scale-125 hover:-translate-y-1 transition-all text-xl focus:outline-none"
+                                                        >
+                                                            {emoji}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+
+                                            <div className={`opacity-100 md:opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all duration-200 shrink-0 z-10 ${isMine ? 'order-1' : 'order-2'}`}>
+                                                <button onClick={() => setReactingTo(msg.id)} className="text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors" title="React">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
+                                                </button>
+                                                {isMine && (
+                                                    <button onClick={() => setConfirmDelete({id: msg.id, path: msg.file_path})} className="text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors shrink-0" title="Delete">
+                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-3 py-2 shadow-md z-10 relative ${isMine ? 'order-2 bg-blue-600 text-white rounded-br-none' : 'order-1 bg-[#1a1a1a] border border-[#222] text-slate-200 rounded-bl-none'}`}>
+                                                
+                                                {reactionCount > 0 && (
+                                                    <div className={`absolute -bottom-3.5 right-2 ${isMine ? 'bg-[#0a0a0a]' : 'bg-[#0a0a0a]'} border-[3px] border-[#0a0a0a] rounded-full px-1.5 py-0.5 text-[12px] shadow-sm flex items-center justify-center gap-0.5 z-20`}>
+                                                        {uniqueEmojis.map((emoji: any, i) => <span key={i} className="leading-none">{emoji}</span>)}
+                                                        {reactionCount > 1 && <span className="text-[#aaa] text-[9px] font-bold ml-0.5 leading-none">{reactionCount}</span>}
+                                                    </div>
+                                                )}
+                                                
+                                                {msg.content && <p className="text-[13px] whitespace-pre-wrap break-words leading-snug">{msg.content}</p>}
+                                                
+                                                {msg.file_name && (
+                                                    <div className={`mt-1.5 flex flex-col gap-1 p-1 rounded-lg border ${isMine ? 'bg-blue-700/50 border-blue-500/30' : 'bg-[#111] border-[#333]'}`}>
+                                                        {isVoiceNote ? (
+                                                            <VoiceNotePlayer path={msg.file_path} isMine={isMine} />
+                                                        ) : (
+                                                            <div className={`overflow-hidden rounded ${isImageFile ? 'cursor-pointer hover:opacity-90 transition' : ''}`} onClick={() => isImageFile && handlePreview(msg.file_path, msg.file_name)} title={isImageFile ? "Click to expand" : ""}>
+                                                                <FileThumbnail path={msg.file_path} fileName={msg.file_name} isChat={true} />
+                                                            </div>
+                                                        )}
+                                                        
+                                                        {!isVoiceNote && (
+                                                            <div className="flex items-center justify-between gap-2 px-1 mt-0.5">
+                                                                <span className="text-[10px] truncate max-w-[150px] font-medium opacity-80">{msg.file_name}</span>
+                                                                <div className="flex gap-1 shrink-0">
+                                                                    {isImageFile && <button type="button" onClick={(e) => { e.stopPropagation(); handlePreview(msg.file_path, msg.file_name); }} className="text-[10px] font-bold bg-black/30 hover:bg-black/50 px-1.5 py-1 rounded transition">👁️</button>}
+                                                                    <button type="button" onClick={(e) => { e.stopPropagation(); handleDownload(msg.file_path, msg.file_name); }} className="text-[10px] font-bold bg-black/30 hover:bg-black/50 px-1.5 py-1 rounded transition">💾</button>
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                
+                                                <span className={`text-[9px] block mt-1 flex items-center ${isMine ? 'justify-end gap-1.5' : 'justify-start opacity-60'}`}>
+                                                    <span className="opacity-80">{new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                    {isMine && (
+                                                        <span className={`tracking-tighter ${msg.is_read ? 'text-[#38bdf8] font-black' : 'text-white opacity-50 font-bold'}`}>✓✓</span>
+                                                    )}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )
+                                })
+                            )}
+                            {isTyping && (
+                                <div className="flex justify-start">
+                                    <div className="bg-[#1a1a1a] border border-[#222] text-[#888] text-[10px] font-bold uppercase tracking-widest px-4 py-2.5 rounded-xl rounded-bl-none animate-pulse shadow-sm">
+                                        {activeChat.username} is typing...
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* Input Area */}
+                        <form onSubmit={handleSendMessage} className="p-3 bg-[#161616] border-t border-[#222] z-10 flex gap-2 items-center shrink-0">
+                            {isRecording ? (
+                                <div className="flex-1 bg-red-900/20 border border-red-500/50 rounded-xl flex items-center justify-between p-3 transition">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)]"></span>
+                                        <span className="text-red-500 text-[11px] font-bold tracking-widest uppercase">Recording...</span>
+                                    </div>
+                                    <button type="button" onClick={cancelRecording} className="text-red-400 hover:text-red-300 text-[10px] font-bold uppercase tracking-widest transition">Cancel ✕</button>
+                                </div>
+                            ) : (
+                                <div className="flex-1 bg-[#222] border border-[#333] rounded-xl flex items-center pr-2 focus-within:border-white transition shadow-inner">
+                                    <input 
+                                        type="text" 
+                                        value={newMessage} 
+                                        onChange={handleTyping}
+                                        placeholder="Type a message..." 
+                                        className="w-full bg-transparent text-white text-sm p-3 outline-none"
+                                    />
+                                    <input type="file" ref={chatFileInputRef} onChange={e => setChatFile(e.target.files?.[0] || null)} className="hidden" id="chat-file" />
+                                    <label htmlFor="chat-file" className={`cursor-pointer p-2 hover:bg-[#333] rounded-lg transition flex items-center gap-1 ${chatFile ? 'text-green-500 font-bold' : 'text-[#888]'}`} title={chatFile ? chatFile.name : "Attach file"}>
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                                        {chatFile && <span className="text-[10px] truncate max-w-[60px] hidden sm:inline-block">{chatFile.name}</span>}
+                                    </label>
+                                </div>
+                            )}
+
+                            {isRecording ? (
+                                <button type="button" onClick={stopRecordingAndSend} className="bg-red-600 text-white font-bold px-4 py-3 rounded-xl text-[11px] uppercase tracking-widest hover:bg-red-500 transition shadow-lg shrink-0">
+                                    Send
+                                </button>
+                            ) : (
+                                <>
+                                    <button type="button" onClick={startRecording} className="bg-[#222] text-white hover:bg-[#333] p-3 rounded-xl transition shrink-0" title="Voice Note">
+                                        🎤
+                                    </button>
+                                    <button type="submit" disabled={(!newMessage.trim() && !chatFile)} className="bg-white text-black font-bold px-5 py-3 rounded-xl text-[11px] uppercase tracking-widest hover:bg-[#ccc] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-lg shrink-0">
+                                        Send
+                                    </button>
+                                </>
+                            )}
+                        </form>
+                    </>
+                )}
             </div>
 
             {previewData && (
-                <div 
-                    className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" 
-                    onClick={() => setPreviewData(null)}
-                >
-                    <button 
-                        className="absolute top-6 right-6 text-white bg-[#222] border border-[#444] hover:bg-white hover:text-black rounded-full w-10 h-10 flex items-center justify-center font-bold transition shadow-lg z-10" 
-                        onClick={() => setPreviewData(null)}
-                        title="Close Preview"
-                    >
-                        ✕
-                    </button>
-                    <img 
-                        src={previewData.url} 
-                        alt={previewData.name} 
-                        className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl border border-[#333] cursor-default" 
-                        onClick={(e) => e.stopPropagation()} 
-                    />
-                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111] border border-[#333] text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-lg pointer-events-none">
-                        {previewData.name}
-                    </div>
+                <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" onClick={() => setPreviewData(null)}>
+                    <button className="absolute top-6 right-6 text-white bg-[#222] border border-[#444] hover:bg-white hover:text-black rounded-full w-10 h-10 flex items-center justify-center font-bold transition shadow-lg z-10" onClick={() => setPreviewData(null)}>✕</button>
+                    <img src={previewData.url} alt={previewData.name} className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl border border-[#333] cursor-default" onClick={(e) => e.stopPropagation()} />
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-[#111] border border-[#333] text-white px-6 py-2.5 rounded-full text-xs font-bold shadow-lg pointer-events-none">{previewData.name}</div>
                 </div>
             )}
 
