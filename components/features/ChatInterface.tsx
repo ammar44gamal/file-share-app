@@ -80,9 +80,7 @@ export default function ChatInterface({
     return (
         <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative">
             
-            {reactingTo && (
-                <div className="fixed inset-0 z-[50]" onClick={() => setReactingTo(null)}></div>
-            )}
+            {/* The overlay was removed from here! */}
 
             <div className="flex flex-col lg:grid lg:grid-cols-3 gap-4 md:gap-6 h-full">
                 
@@ -118,6 +116,12 @@ export default function ChatInterface({
                                 </div>
 
                                 <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1.5 z-10 relative">
+                                    
+                                    {/* CHANGED: We moved the overlay INSIDE the scroll container to perfectly share the z-index math */}
+                                    {reactingTo && (
+                                        <div className="fixed inset-0 z-[40]" onClick={() => setReactingTo(null)}></div>
+                                    )}
+
                                     {messages.length === 0 ? (
                                         <div className="h-full flex items-center justify-center text-[#444] text-[10px] font-bold uppercase tracking-widest italic text-center px-4">
                                             No messages yet. Begin transmission.
@@ -145,13 +149,19 @@ export default function ChatInterface({
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
                                             return (
-                                                // CHANGED: We dynamically swap the z-index so the active message pops above the invisible overlay!
-                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-5 ${reactingTo === msg.id ? 'z-[60]' : 'z-10'}`}>
+                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-5 ${reactingTo === msg.id ? 'z-[50]' : 'z-10'}`}>
                                                     
                                                     {reactingTo === msg.id && (
                                                         <div className={`absolute bottom-[calc(100%+4px)] ${isMine ? 'right-0' : 'left-0'} z-[70] bg-[#222] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.5)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
-                                                            {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(e => (
-                                                                <button key={e} onClick={() => handleReact(msg.id, e, msg.reactions)} className="hover:scale-125 hover:-translate-y-1 transition-all text-xl focus:outline-none">{e}</button>
+                                                            {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
+                                                                <button 
+                                                                    key={emoji} 
+                                                                    // CHANGED: Added stopPropagation so the click doesn't hit the invisible background
+                                                                    onClick={(e) => { e.stopPropagation(); handleReact(msg.id, emoji, msg.reactions); }} 
+                                                                    className="hover:scale-125 hover:-translate-y-1 transition-all text-xl focus:outline-none"
+                                                                >
+                                                                    {emoji}
+                                                                </button>
                                                             ))}
                                                         </div>
                                                     )}
