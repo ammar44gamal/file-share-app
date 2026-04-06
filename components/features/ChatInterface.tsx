@@ -33,17 +33,14 @@ export default function ChatInterface({
         }
     };
 
-    // NEW: Function to handle message deletion
     const handleDeleteMessage = async (msgId: string, filePath: string | null) => {
         const isConfirmed = window.confirm("Delete this message for everyone?");
         if (!isConfirmed) return;
 
-        // 1. If the message had a file, permanently delete it from the storage bucket to save space
         if (filePath) {
             await supabase.storage.from('user-files').remove([filePath]);
         }
 
-        // 2. Mark the message as deleted in the database and wipe the content
         await supabase.from('messages').update({
             content: '',
             file_name: null,
@@ -97,7 +94,6 @@ export default function ChatInterface({
                                         messages.map((msg: any) => {
                                             const isMine = msg.sender_id === user.id;
                                             
-                                            // NEW: Check if the message was deleted first
                                             if (msg.is_deleted) {
                                                 return (
                                                     <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
@@ -113,19 +109,21 @@ export default function ChatInterface({
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
                                             return (
-                                                // CHANGED: Added 'group relative' so we can show the delete button on hover
-                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group relative`}>
+                                                // CHANGED: Added items-center and gap-2 to nicely place the button next to the bubble
+                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative`}>
                                                     
-                                                    {/* NEW: The hidden Delete Button that appears on hover next to the message */}
+                                                    {/* CHANGED: Removed absolute positioning. It now sits in the flex row! */}
                                                     {isMine && (
-                                                        <div className="absolute right-[calc(100%+8px)] top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition duration-200 lg:pr-2 z-20">
-                                                            <button onClick={() => handleDeleteMessage(msg.id, msg.file_path)} className="text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors" title="Delete Message">
-                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                                                            </button>
-                                                        </div>
+                                                        <button 
+                                                            onClick={() => handleDeleteMessage(msg.id, msg.file_path)} 
+                                                            className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-all duration-200 shrink-0" 
+                                                            title="Delete Message"
+                                                        >
+                                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                                                        </button>
                                                     )}
 
-                                                    <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-2.5 py-1.5 shadow-md relative z-10 ${isMine ? 'bg-blue-600 text-white rounded-br-none' : 'bg-[#222] text-slate-200 rounded-bl-none'}`}>
+                                                    <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-2.5 py-1.5 shadow-md z-10 ${isMine ? 'bg-blue-600 text-white rounded-br-none' : 'bg-[#222] text-slate-200 rounded-bl-none'}`}>
                                                         
                                                         {msg.content && <p className="text-xs whitespace-pre-wrap break-words leading-snug">{msg.content}</p>}
                                                         
