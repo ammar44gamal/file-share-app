@@ -24,6 +24,11 @@ export default function ChatInterface({
     const [pinnedChats, setPinnedChats] = useState<string[]>([]);
     const [lastActivity, setLastActivity] = useState<Record<string, number>>({});
 
+    // NEW: Refs to safely track changes without triggering re-renders
+    const prevMessagesLength = useRef(0);
+    const prevActiveChatId = useRef<string | null>(null);
+    const prevUnread = useRef<string[]>([]);
+
     useEffect(() => {
         const savedPins = localStorage.getItem('filehub_pinned_chats');
         if (savedPins) setPinnedChats(JSON.parse(savedPins));
@@ -40,31 +45,38 @@ export default function ChatInterface({
         }, 10);
     }, [messages, activeChat, isTyping, chatScrollRef]);
 
+    // FIX 1: Only update timestamp when a NEW message arrives while in the chat, ignore normal clicks
     useEffect(() => {
-        if (messages.length > 0 && activeChat) {
-            const lastMsg = messages[messages.length - 1];
-            const lastMsgTime = new Date(lastMsg.created_at).getTime();
-
-            setLastActivity(prev => {
-                if (!prev[activeChat.friend_id] || lastMsgTime > prev[activeChat.friend_id]) {
-                    const updated = { ...prev, [activeChat.friend_id]: lastMsgTime };
-                    localStorage.setItem('filehub_chat_activity', JSON.stringify(updated));
-                    return updated;
-                }
-                return prev;
-            });
+        if (activeChat?.friend_id !== prevActiveChatId.current) {
+            // Switched chats. Do NOT update time, just reset our trackers.
+            prevActiveChatId.current = activeChat?.friend_id || null;
+            prevMessagesLength.current = messages.length;
+            return;
         }
-    }, [messages, activeChat]);
 
-    useEffect(() => {
-        if (unreadSenders.length > 0) {
+        // If we are in the same chat and the message count went up, a new message was sent/received!
+        if (messages.length > prevMessagesLength.current) {
             setLastActivity(prev => {
-                const updated = { ...prev };
-                unreadSenders.forEach((id: string) => { updated[id] = Date.now(); });
+                const updated = { ...prev, [activeChat.friend_id]: Date.now() };
                 localStorage.setItem('filehub_chat_activity', JSON.stringify(updated));
                 return updated;
             });
         }
+        prevMessagesLength.current = messages.length;
+    }, [messages, activeChat]);
+
+    // FIX 2: Only update timestamp for NEWLY unread incoming messages (stops unread chats from constantly jumping)
+    useEffect(() => {
+        const newlyUnread = unreadSenders.filter((id: string) => !prevUnread.current.includes(id));
+        if (newlyUnread.length > 0) {
+            setLastActivity(prev => {
+                const updated = { ...prev };
+                newlyUnread.forEach((id: string) => { updated[id] = Date.now(); });
+                localStorage.setItem('filehub_chat_activity', JSON.stringify(updated));
+                return updated;
+            });
+        }
+        prevUnread.current = unreadSenders;
     }, [unreadSenders]);
 
     const togglePin = (friendId: string) => {
@@ -84,19 +96,17 @@ export default function ChatInterface({
         });
     };
 
+    // FIX 3: Removed "Forced Unread" sorting. Now it's purely Pinned -> Most Recent Time
     const sortedFriends = [...friends].sort((a, b) => {
         const aPinned = pinnedChats.includes(a.friend_id);
         const bPinned = pinnedChats.includes(b.friend_id);
         if (aPinned && !bPinned) return -1;
         if (!aPinned && bPinned) return 1;
 
-        const aUnread = unreadSenders.includes(a.friend_id);
-        const bUnread = unreadSenders.includes(b.friend_id);
-        if (aUnread && !bUnread) return -1;
-        if (!aUnread && bUnread) return 1;
-
         const aTime = lastActivity[a.friend_id] || 0;
         const bTime = lastActivity[b.friend_id] || 0;
+        
+        if (aTime === bTime) return a.username.localeCompare(b.username); // Fallback to alphabetical if no messages
         return bTime - aTime; 
     });
 
@@ -166,7 +176,6 @@ export default function ChatInterface({
                                         onClick={() => setActiveChat(f)} 
                                         className={`group flex items-center gap-3 p-3 cursor-pointer border-b border-[#222]/50 transition ${isActive ? 'bg-[#111] border-l-2 border-l-white' : 'hover:bg-white/5 border-l-2 border-l-transparent'}`}
                                     >
-                                        {/* CHANGED: Minimal Dark Profile Circle */}
                                         <div className="w-11 h-11 rounded-full bg-[#111] border border-[#333] flex items-center justify-center text-slate-200 font-bold text-lg shrink-0 relative">
                                             {f.username.charAt(0).toUpperCase()}
                                             {isUnread && <span className="absolute bottom-0 right-0 w-3 h-3 bg-blue-500 rounded-full border-2 border-[#111]"></span>}
@@ -252,7 +261,6 @@ export default function ChatInterface({
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"></path><polyline points="12 19 5 12 12 5"></polyline></svg>
                             </button>
                             
-                            {/* CHANGED: Minimal Dark Profile Circle in Chat Header */}
                             <div className="w-9 h-9 rounded-full bg-[#111] border border-[#333] flex items-center justify-center text-slate-200 font-bold shrink-0">
                                 {activeChat.username.charAt(0).toUpperCase()}
                             </div>
