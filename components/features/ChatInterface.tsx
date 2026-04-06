@@ -49,8 +49,9 @@ export default function ChatInterface({
     const localStreamRef = useRef<MediaStream | null>(null);
     const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
 
-    // CHANGED: Only need the ref now, removed the upload state/refs
+    // CHANGED: We now have TWO audio refs! One for receiving, one for dialing out.
     const ringtoneRef = useRef<HTMLAudioElement>(null);
+    const ringbackRef = useRef<HTMLAudioElement>(null);
 
     const myName = user?.user_metadata?.custom_username || user?.email?.split('@')[0] || 'Unknown Node';
 
@@ -113,13 +114,22 @@ export default function ChatInterface({
         if (!isVisible && callStatus !== 'idle') setIsMinimized(true);
     }, [isVisible, callStatus]);
 
-    // Handle Fixed Ringtone Playback based on Call Status
+    // CHANGED: Split the logic for Receiver (Ringtone) vs Caller (Ringback)
     useEffect(() => {
-        if ((callStatus === 'ringing' || callStatus === 'calling') && ringtoneRef.current) {
+        // Handle Receiver Ringtone
+        if (callStatus === 'ringing' && ringtoneRef.current) {
             ringtoneRef.current.play().catch(e => console.log("Audio autoplay blocked by browser:", e));
         } else if (ringtoneRef.current) {
             ringtoneRef.current.pause();
             ringtoneRef.current.currentTime = 0;
+        }
+
+        // Handle Caller Ringback Tone
+        if (callStatus === 'calling' && ringbackRef.current) {
+            ringbackRef.current.play().catch(e => console.log("Audio autoplay blocked by browser:", e));
+        } else if (ringbackRef.current) {
+            ringbackRef.current.pause();
+            ringbackRef.current.currentTime = 0;
         }
     }, [callStatus]);
 
@@ -402,8 +412,9 @@ export default function ChatInterface({
 
     return (
         <>
-            {/* CHANGED: Fixed Audio Player pointing directly to the public folder */}
+            {/* CHANGED: We now have two separate audio players loaded from your public folder */}
             <audio ref={ringtoneRef} src="/ringtone.mp3" loop preload="auto" />
+            <audio ref={ringbackRef} src="/ringback.mp3" loop preload="auto" />
             
             {/* MAIN CHAT UI - Hidden if !isVisible so you can look at folders! */}
             <div className={`${isVisible ? 'flex' : 'hidden'} animate-in slide-in-from-bottom-4 duration-500 h-full relative bg-transparent md:bg-black/50 md:backdrop-blur-xl md:border border-[#222] rounded-xl shadow-2xl overflow-hidden flex-col md:flex-row`}>
@@ -412,8 +423,6 @@ export default function ChatInterface({
                 <div className={`w-full md:w-72 lg:w-80 flex-col border-r border-[#222] bg-transparent shrink-0 h-full ${activeChat ? 'hidden md:flex' : 'flex'}`}>
                     <div className="p-4 border-b border-[#222] flex justify-between items-center bg-transparent">
                         <h2 className="font-bold text-white text-sm tracking-wide">{leftView === 'chats' ? 'Messages' : 'Network Nodes'}</h2>
-                        
-                        {/* CHANGED: Removed the custom ringtone upload button */}
                         <button onClick={() => setLeftView(leftView === 'chats' ? 'contacts' : 'chats')} className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] px-2.5 py-1.5 rounded transition">
                             {leftView === 'chats' ? '+ Add' : '← Back'}
                         </button>
@@ -756,7 +765,6 @@ export default function ChatInterface({
                         </p>
                     </div>
 
-                    {/* ACTION BUTTONS - Anchored to bottom-10 */}
                     <div className={`z-20 flex items-center justify-center gap-3 md:gap-6 absolute inset-x-0 ${isMinimized ? 'bottom-2' : 'bottom-10 md:bottom-12'}`}>
                         {callStatus === 'ringing' ? (
                             <>
