@@ -16,7 +16,6 @@ export default function ChatInterface({
 }: any) {
 
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
-    // NEW: State for our custom confirmation popup
     const [confirmDelete, setConfirmDelete] = useState<{id: string, path: string | null} | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -35,18 +34,13 @@ export default function ChatInterface({
         }
     };
 
-    // NEW: The Optimistic Deletion Logic
     const executeDelete = async () => {
         if (!confirmDelete) return;
         const { id, path } = confirmDelete;
 
-        // 1. Instant Optimistic UI Update (Makes it vanish immediately)
         setMessages((prev: any[]) => prev.map(m => m.id === id ? { ...m, is_deleted: true, content: '', file_name: null, file_path: null } : m));
-        
-        // 2. Close the modal
         setConfirmDelete(null);
 
-        // 3. Database deletion in the background
         if (path) {
             await supabase.storage.from('user-files').remove([path]);
         }
@@ -123,7 +117,8 @@ export default function ChatInterface({
                                                     {isMine && (
                                                         <button 
                                                             onClick={() => setConfirmDelete({id: msg.id, path: msg.file_path})} 
-                                                            className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-all duration-200 shrink-0" 
+                                                            // CHANGED: opacity-100 on mobile, md:opacity-0 on desktop!
+                                                            className="opacity-100 md:opacity-0 group-hover:opacity-100 focus:opacity-100 text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-all duration-200 shrink-0" 
                                                             title="Delete Message"
                                                         >
                                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
@@ -269,7 +264,6 @@ export default function ChatInterface({
                 </div>
             </div>
 
-            {/* Lightbox for Images */}
             {previewData && (
                 <div 
                     className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in zoom-in duration-200 cursor-zoom-out" 
@@ -294,7 +288,6 @@ export default function ChatInterface({
                 </div>
             )}
 
-            {/* NEW: Beautiful Custom Confirmation Dialog for Deletions */}
             {confirmDelete && (
                 <div className="fixed inset-0 z-[400] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-[#111] border border-[#333] rounded-xl p-6 w-full max-w-xs md:max-w-sm shadow-2xl flex flex-col items-center text-center">
