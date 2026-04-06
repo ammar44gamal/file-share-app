@@ -468,16 +468,14 @@ export default function DistributedFileHub() {
             </div>
         </div>
 
-        <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-y-auto">
-            {viewingSearch ? (
-                <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
-            ) : viewingComms ? (
-                <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef, replyTo, setReplyTo}} />
-            ) : viewingAdminPanel ? (
-                <AdminPanel adminUserList={adminUserList} />
-            ) : (
-                <FileExplorer {...{isLockedForUser, currentFolder, fileInputRef, files, setFiles, handleUpload, uploading, isPublic, setIsPublic, filesList, formatBytes, handleDownload, user, canManageFolder, toggleFilePrivacy, handleDeleteFile}} />
-            )}
+        <div className="p-4 md:p-6 lg:p-8 flex-1 overflow-y-auto relative">
+            {/* Render the other views individually */}
+            {viewingSearch && <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />}
+            {viewingAdminPanel && <AdminPanel adminUserList={adminUserList} />}
+            {!viewingSearch && !viewingAdminPanel && !viewingComms && <FileExplorer {...{isLockedForUser, currentFolder, fileInputRef, files, setFiles, handleUpload, uploading, isPublic, setIsPublic, filesList, formatBytes, handleDownload, user, canManageFolder, toggleFilePrivacy, handleDeleteFile}} />}
+            
+            {/* ALWAYS keep the Chat mounted so calls don't drop, but pass an "isVisible" prop to hide the chat UI */}
+            <ChatInterface {...{isVisible: viewingComms, searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef, replyTo, setReplyTo, showAlert}} />
         </div>
       </main>
     </div>
