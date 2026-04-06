@@ -48,7 +48,6 @@ export default function ChatInterface({
     const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
     
-    // NEW FIX: The ICE Candidate Waiting Room!
     const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
 
     const myName = user?.user_metadata?.custom_username || user?.email?.split('@')[0] || 'Unknown Node';
@@ -155,7 +154,6 @@ export default function ChatInterface({
                         await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
                         setCallStatus('connected');
                         
-                        // FIX: Flush waiting room for the Caller
                         for (const candidate of pendingCandidates.current) {
                             try { await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e) { console.log(e); }
                         }
@@ -163,12 +161,9 @@ export default function ChatInterface({
                     }
                 } 
                 else if (data.type === 'candidate') {
-                    // FIX: The Waiting Room Logic!
                     if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
-                        // If connection is fully awake, add the route immediately
                         try { await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e) { console.log(e); }
                     } else {
-                        // If phone is still ringing or setting up, throw the route in the waiting room!
                         pendingCandidates.current.push(data.candidate);
                     }
                 } 
@@ -219,11 +214,10 @@ export default function ChatInterface({
         setIsMuted(false);
         setIsVideoOff(false);
         setPipPos({ x: 0, y: 0 }); 
-        pendingCandidates.current = []; // FIX: Empty the waiting room
+        pendingCandidates.current = [];
     };
 
     const createPeerConnection = (targetId: string) => {
-        // We use Google's free public servers to bounce the connection between routers
         const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
         
         pc.onicecandidate = (event) => {
@@ -276,7 +270,6 @@ export default function ChatInterface({
             const pc = createPeerConnection(incomingCall.caller_id);
             await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
             
-            // FIX: Flush the waiting room for the Receiver! (Inject candidates that arrived during Ringing)
             for (const candidate of pendingCandidates.current) {
                 try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch(e) { console.log(e); }
             }
@@ -727,7 +720,8 @@ export default function ChatInterface({
 
                     <video ref={remoteVideoRef} autoPlay playsInline className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${(callStatus === 'connected' && isVideoCall) ? 'opacity-100' : 'opacity-0'}`} />
                     
-                    <div className={`absolute ${isMinimized ? 'bottom-2 right-2 w-12 h-16 border-[#444]' : 'bottom-24 right-6 w-32 h-48 border-[#333]'} bg-black border rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)] z-20 transition-all duration-500 ${(isVideoCall && !isVideoOff && (callStatus === 'connected' || callStatus === 'calling')) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
+                    {/* Local Video - Bumped up to bottom-32 so it doesn't overlap action buttons */}
+                    <div className={`absolute ${isMinimized ? 'bottom-2 right-2 w-12 h-16 border-[#444]' : 'bottom-32 right-6 w-32 h-48 border-[#333]'} bg-black border rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)] z-20 transition-all duration-500 ${(isVideoCall && !isVideoOff && (callStatus === 'connected' || callStatus === 'calling')) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
                         <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
                     </div>
 
@@ -739,12 +733,15 @@ export default function ChatInterface({
                         <h2 className={`text-white font-bold tracking-tight pointer-events-none ${isMinimized ? 'text-xs mb-0.5' : 'text-3xl mb-2'}`}>
                             {activeChat?.username || incomingCall?.caller_name}
                         </h2>
+                        
+                        {/* DYNAMIC CALL TEXT */}
                         <p className={`text-[#888] font-bold pointer-events-none ${isMinimized ? 'text-[8px]' : 'text-xs uppercase tracking-widest animate-pulse'}`}>
-                            {callStatus === 'calling' ? 'Calling...' : callStatus === 'ringing' ? 'Incoming Encrypted Call...' : formatDuration(callDuration)}
+                            {callStatus === 'calling' ? `Requesting Secure ${isVideoCall ? 'Video' : 'Voice'} Call...` : callStatus === 'ringing' ? `Incoming Encrypted ${isVideoCall ? 'Video' : 'Voice'} Call...` : formatDuration(callDuration)}
                         </p>
                     </div>
 
-                    <div className={`z-20 flex items-center justify-center gap-3 md:gap-6 ${isMinimized ? 'absolute bottom-2 inset-x-0' : ''}`}>
+                    {/* ACTION BUTTONS - Anchored to bottom-10 */}
+                    <div className={`z-20 flex items-center justify-center gap-3 md:gap-6 absolute inset-x-0 ${isMinimized ? 'bottom-2' : 'bottom-10 md:bottom-12'}`}>
                         {callStatus === 'ringing' ? (
                             <>
                                 <button onClick={(e) => { e.stopPropagation(); rejectCall(); }} className={`${isMinimized ? 'w-8 h-8' : 'w-16 h-16'} bg-red-600 rounded-full flex items-center justify-center hover:bg-red-500 transition hover:scale-110 shadow-[0_0_20px_rgba(220,38,38,0.4)] text-white cursor-pointer`}>
