@@ -53,7 +53,6 @@ export default function ChatInterface({
         }).eq('id', id);
     };
 
-    // NEW: Safe JSON parser to handle Supabase real-time quirks
     const parseReactions = (reactions: any) => {
         if (!reactions) return {};
         if (typeof reactions === 'string') {
@@ -67,9 +66,9 @@ export default function ChatInterface({
         const newReactions = { ...reactions };
 
         if (newReactions[user.id] === emoji) {
-            delete newReactions[user.id]; // Remove if clicked twice
+            delete newReactions[user.id];
         } else {
-            newReactions[user.id] = emoji; // Add/Change emoji
+            newReactions[user.id] = emoji; 
         }
 
         setMessages((prev: any[]) => prev.map(m => m.id === msgId ? { ...m, reactions: newReactions } : m));
@@ -118,7 +117,7 @@ export default function ChatInterface({
                                     <button onClick={() => setActiveChat(null)} className="text-[#888] hover:text-white text-[10px] font-bold px-2 py-1 border border-[#333] rounded hover:bg-[#333]">✕</button>
                                 </div>
 
-                                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1.5 z-10">
+                                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1.5 z-10 relative">
                                     {messages.length === 0 ? (
                                         <div className="h-full flex items-center justify-center text-[#444] text-[10px] font-bold uppercase tracking-widest italic text-center px-4">
                                             No messages yet. Begin transmission.
@@ -127,7 +126,6 @@ export default function ChatInterface({
                                         messages.map((msg: any) => {
                                             const isMine = msg.sender_id === user.id;
                                             
-                                            // Process reactions safely
                                             const activeReactions = parseReactions(msg.reactions);
                                             const reactionCount = Object.keys(activeReactions).length;
                                             const uniqueEmojis = Array.from(new Set(Object.values(activeReactions)));
@@ -147,12 +145,11 @@ export default function ChatInterface({
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
                                             return (
-                                                // CHANGED: Increased bottom margin (mb-5) to give the WhatsApp reactions room to hang down
-                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-5`}>
+                                                // CHANGED: We dynamically swap the z-index so the active message pops above the invisible overlay!
+                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-5 ${reactingTo === msg.id ? 'z-[60]' : 'z-10'}`}>
                                                     
-                                                    {/* CHANGED: Emoji Picker moved right above the message like WhatsApp */}
                                                     {reactingTo === msg.id && (
-                                                        <div className={`absolute bottom-[calc(100%+4px)] ${isMine ? 'right-0' : 'left-0'} z-[60] bg-[#222] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.5)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
+                                                        <div className={`absolute bottom-[calc(100%+4px)] ${isMine ? 'right-0' : 'left-0'} z-[70] bg-[#222] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.5)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
                                                             {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(e => (
                                                                 <button key={e} onClick={() => handleReact(msg.id, e, msg.reactions)} className="hover:scale-125 hover:-translate-y-1 transition-all text-xl focus:outline-none">{e}</button>
                                                             ))}
@@ -180,7 +177,6 @@ export default function ChatInterface({
 
                                                     <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-2.5 py-1.5 shadow-md z-10 relative ${isMine ? 'order-2 bg-blue-600 text-white rounded-br-none' : 'order-1 bg-[#222] text-slate-200 rounded-bl-none'}`}>
                                                         
-                                                        {/* CHANGED: WhatsApp style reactions container! Thick black border makes it look like it's carved out of the bubble */}
                                                         {reactionCount > 0 && (
                                                             <div className={`absolute -bottom-3.5 right-2 bg-[#222] border-[3px] border-black rounded-full px-1.5 py-0.5 text-[12px] shadow-sm flex items-center justify-center gap-0.5 z-20`}>
                                                                 {uniqueEmojis.map((emoji: any, i) => (
