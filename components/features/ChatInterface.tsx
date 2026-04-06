@@ -12,7 +12,7 @@ export default function ChatInterface({
     friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders,
     messages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile,
     chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend,
-    cancelRecording, chatScrollRef
+    cancelRecording, chatScrollRef, handleDeleteMessage // NEW: Passed in from page.tsx!
 }: any) {
 
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
@@ -31,22 +31,6 @@ export default function ChatInterface({
         if (data?.signedUrl) {
             setPreviewData({ url: data.signedUrl, name });
         }
-    };
-
-    const handleDeleteMessage = async (msgId: string, filePath: string | null) => {
-        const isConfirmed = window.confirm("Delete this message for everyone?");
-        if (!isConfirmed) return;
-
-        if (filePath) {
-            await supabase.storage.from('user-files').remove([filePath]);
-        }
-
-        await supabase.from('messages').update({
-            content: '',
-            file_name: null,
-            file_path: null,
-            is_deleted: true
-        }).eq('id', msgId);
     };
 
     return (
@@ -109,10 +93,8 @@ export default function ChatInterface({
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
                                             return (
-                                                // CHANGED: Added items-center and gap-2 to nicely place the button next to the bubble
                                                 <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative`}>
                                                     
-                                                    {/* CHANGED: Removed absolute positioning. It now sits in the flex row! */}
                                                     {isMine && (
                                                         <button 
                                                             onClick={() => handleDeleteMessage(msg.id, msg.file_path)} 

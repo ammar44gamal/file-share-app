@@ -237,29 +237,24 @@ export default function DistributedFileHub() {
     if (user && activeChat) supabase.channel(`chat-${[user.id, activeChat.friend_id].sort().join('-')}`).send({ type: 'broadcast', event: 'typing', payload: { sender_id: user.id } });
   };
 
-  // ====================================================================
-  // THE FIX: Explicit MIME Type Detection for iOS Safari
-  // ====================================================================
   const startRecording = async () => {
       try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           
-          // 1. Force the browser to tell us what it actually supports
           let explicitMimeType = '';
           let ext = 'webm';
 
           if (MediaRecorder.isTypeSupported('audio/mp4')) {
               explicitMimeType = 'audio/mp4';
-              ext = 'mp4'; // iOS Safari Native
+              ext = 'mp4'; 
           } else if (MediaRecorder.isTypeSupported('audio/webm')) {
               explicitMimeType = 'audio/webm';
-              ext = 'webm'; // Chrome Native
+              ext = 'webm'; 
           } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
               explicitMimeType = 'audio/ogg';
-              ext = 'ogg'; // Firefox Native
+              ext = 'ogg'; 
           }
 
-          // 2. Initialize the recorder with the forced format
           const options = explicitMimeType ? { mimeType: explicitMimeType } : undefined;
           const mediaRecorder = new MediaRecorder(stream, options);
           
@@ -276,8 +271,6 @@ export default function DistributedFileHub() {
               const fileName = `Voice Note.${ext}`;
               const filePath = `chat-audio-${Date.now()}-${Math.random().toString(36).substring(2,9)}.${ext}`;
               
-              // 3. Create the Blob and File using the strict MIME type
-              // This guarantees Supabase tags it correctly in the database!
               const audioBlob = explicitMimeType 
                   ? new Blob(audioChunksRef.current, { type: explicitMimeType })
                   : new Blob(audioChunksRef.current);
@@ -304,7 +297,6 @@ export default function DistributedFileHub() {
           showAlert("Microphone Error", "Could not access microphone."); 
       }
   };
-  // ====================================================================
 
   const stopRecordingAndSend = () => { if (mediaRecorderRef.current && isRecording) { mediaRecorderRef.current.stop(); setIsRecording(false); } };
   const cancelRecording = () => {
@@ -395,6 +387,7 @@ export default function DistributedFileHub() {
     const { data } = await supabase.storage.from('user-files').download(path);
     if (data) { const url = URL.createObjectURL(data); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); }
   };
+  
   const handleFolderDelete = async (e: React.MouseEvent, folderId: string) => {
     e.stopPropagation();
     showPrompt("Delete Folder", "Type 'DELETE' to confirm.", async (val) => {
@@ -411,6 +404,27 @@ export default function DistributedFileHub() {
         if (error) showAlert("Database Error", error.message); else fetchFiles();
     });
   };
+
+  // NEW: Connected the message deletion to your custom Modal
+  const handleDeleteMessage = async (msgId: string, filePath: string | null) => {
+      showPrompt("Delete Message", "Type 'DELETE' to remove this message for everyone.", async (val) => {
+          if (val.trim().toUpperCase() !== 'DELETE') return showAlert("Error", "Validation failed.");
+          
+          if (filePath) {
+              await supabase.storage.from('user-files').remove([filePath]);
+          }
+          
+          const { error } = await supabase.from('messages').update({
+              content: '',
+              file_name: null,
+              file_path: null,
+              is_deleted: true
+          }).eq('id', msgId);
+
+          if (error) showAlert("Database Error", error.message);
+      });
+  };
+
   const toggleFolderStatus = async (folderId: string, column: string, currentStatus: boolean) => {
     const { error } = await supabase.from('folders').update({ [column]: !currentStatus }).eq('id', folderId);
     if (error) showAlert("Database Error", error.message); else fetchFolders();
@@ -466,7 +480,7 @@ export default function DistributedFileHub() {
             {viewingSearch ? (
                 <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
             ) : viewingComms ? (
-                <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef}} />
+                <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef, handleDeleteMessage}} />
             ) : viewingAdminPanel ? (
                 <AdminPanel adminUserList={adminUserList} />
             ) : (
