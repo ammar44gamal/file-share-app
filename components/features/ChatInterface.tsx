@@ -49,10 +49,8 @@ export default function ChatInterface({
     const localStreamRef = useRef<MediaStream | null>(null);
     const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
 
-    // NEW: Custom Ringtone State and Refs
-    const [ringtoneUrl, setRingtoneUrl] = useState<string | null>(null);
+    // CHANGED: Only need the ref now, removed the upload state/refs
     const ringtoneRef = useRef<HTMLAudioElement>(null);
-    const ringtoneInputRef = useRef<HTMLInputElement>(null);
 
     const myName = user?.user_metadata?.custom_username || user?.email?.split('@')[0] || 'Unknown Node';
 
@@ -65,10 +63,6 @@ export default function ChatInterface({
         if (savedPins) setPinnedChats(JSON.parse(savedPins));
         const savedActivity = localStorage.getItem('filehub_chat_activity');
         if (savedActivity) setLastActivity(JSON.parse(savedActivity));
-        
-        // NEW: Load custom ringtone from local storage
-        const savedRingtone = localStorage.getItem('filehub_custom_ringtone');
-        if (savedRingtone) setRingtoneUrl(savedRingtone);
     }, []);
 
     useEffect(() => {
@@ -119,7 +113,7 @@ export default function ChatInterface({
         if (!isVisible && callStatus !== 'idle') setIsMinimized(true);
     }, [isVisible, callStatus]);
 
-    // NEW: Handle Ringtone Playback based on Call Status
+    // Handle Fixed Ringtone Playback based on Call Status
     useEffect(() => {
         if ((callStatus === 'ringing' || callStatus === 'calling') && ringtoneRef.current) {
             ringtoneRef.current.play().catch(e => console.log("Audio autoplay blocked by browser:", e));
@@ -133,27 +127,6 @@ export default function ChatInterface({
         const m = Math.floor(secs / 60);
         const s = secs % 60;
         return `${m}:${s < 10 ? '0' : ''}${s}`;
-    };
-
-    // NEW: Handle converting MP3 to Base64 and saving to Local Storage
-    const handleRingtoneUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-
-        // Ensure file is smaller than 2MB so it fits in LocalStorage limits safely
-        if (file.size > 2 * 1024 * 1024) {
-            if (showAlert) showAlert("File Too Large", "Please select an audio file under 2MB.");
-            return;
-        }
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const base64Audio = event.target?.result as string;
-            localStorage.setItem('filehub_custom_ringtone', base64Audio);
-            setRingtoneUrl(base64Audio);
-            if (showAlert) showAlert("Success", "Your custom ringtone has been updated!");
-        };
-        reader.readAsDataURL(file);
     };
 
     const handlePointerDown = (e: React.PointerEvent) => {
@@ -429,8 +402,8 @@ export default function ChatInterface({
 
     return (
         <>
-            {/* NEW: Invisible Audio Player for the Ringtone */}
-            {ringtoneUrl && <audio ref={ringtoneRef} src={ringtoneUrl} loop preload="auto" />}
+            {/* CHANGED: Fixed Audio Player pointing directly to the public folder */}
+            <audio ref={ringtoneRef} src="/ringtone.mp3" loop preload="auto" />
             
             {/* MAIN CHAT UI - Hidden if !isVisible so you can look at folders! */}
             <div className={`${isVisible ? 'flex' : 'hidden'} animate-in slide-in-from-bottom-4 duration-500 h-full relative bg-transparent md:bg-black/50 md:backdrop-blur-xl md:border border-[#222] rounded-xl shadow-2xl overflow-hidden flex-col md:flex-row`}>
@@ -440,16 +413,10 @@ export default function ChatInterface({
                     <div className="p-4 border-b border-[#222] flex justify-between items-center bg-transparent">
                         <h2 className="font-bold text-white text-sm tracking-wide">{leftView === 'chats' ? 'Messages' : 'Network Nodes'}</h2>
                         
-                        {/* NEW: RINGTONE UPLOAD BUTTON ADDED HERE */}
-                        <div className="flex gap-2">
-                            <input type="file" accept="audio/*" className="hidden" ref={ringtoneInputRef} onChange={handleRingtoneUpload} />
-                            <button onClick={() => ringtoneInputRef.current?.click()} className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] px-2.5 py-1.5 rounded transition" title="Set Custom Ringtone">
-                                🎵
-                            </button>
-                            <button onClick={() => setLeftView(leftView === 'chats' ? 'contacts' : 'chats')} className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] px-2.5 py-1.5 rounded transition">
-                                {leftView === 'chats' ? '+ Add' : '← Back'}
-                            </button>
-                        </div>
+                        {/* CHANGED: Removed the custom ringtone upload button */}
+                        <button onClick={() => setLeftView(leftView === 'chats' ? 'contacts' : 'chats')} className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] px-2.5 py-1.5 rounded transition">
+                            {leftView === 'chats' ? '+ Add' : '← Back'}
+                        </button>
                     </div>
                     {leftView === 'chats' && (
                         <div className="flex-1 overflow-y-auto scrollbar-hide bg-transparent">
@@ -770,6 +737,7 @@ export default function ChatInterface({
 
                     <video ref={remoteVideoRef} autoPlay playsInline className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${(callStatus === 'connected' && isVideoCall) ? 'opacity-100' : 'opacity-0'}`} />
                     
+                    {/* Local Video - Bumped up to bottom-32 so it doesn't overlap action buttons */}
                     <div className={`absolute ${isMinimized ? 'bottom-2 right-2 w-12 h-16 border-[#444]' : 'bottom-32 right-6 w-32 h-48 border-[#333]'} bg-black border rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)] z-20 transition-all duration-500 ${(isVideoCall && !isVideoOff && (callStatus === 'connected' || callStatus === 'calling')) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
                         <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
                     </div>
@@ -788,6 +756,7 @@ export default function ChatInterface({
                         </p>
                     </div>
 
+                    {/* ACTION BUTTONS - Anchored to bottom-10 */}
                     <div className={`z-20 flex items-center justify-center gap-3 md:gap-6 absolute inset-x-0 ${isMinimized ? 'bottom-2' : 'bottom-10 md:bottom-12'}`}>
                         {callStatus === 'ringing' ? (
                             <>
