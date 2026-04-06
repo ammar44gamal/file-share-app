@@ -114,19 +114,19 @@ export default function ChatInterface({
         if (!isVisible && callStatus !== 'idle') setIsMinimized(true);
     }, [isVisible, callStatus]);
 
-    // CHANGED: Split the logic for Receiver (Ringtone) vs Caller (Ringback)
+    // Handle Fixed Ringtone Playback based on Call Status
     useEffect(() => {
-        // Handle Receiver Ringtone
+        // 1. If someone is calling YOU (ringing) -> Play Ringtone
         if (callStatus === 'ringing' && ringtoneRef.current) {
-            ringtoneRef.current.play().catch(e => console.log("Audio autoplay blocked by browser:", e));
+            ringtoneRef.current.play().catch(e => console.log("Audio autoplay blocked:", e));
         } else if (ringtoneRef.current) {
             ringtoneRef.current.pause();
             ringtoneRef.current.currentTime = 0;
         }
 
-        // Handle Caller Ringback Tone
+        // 2. If YOU are calling someone (calling) -> Play Ringback
         if (callStatus === 'calling' && ringbackRef.current) {
-            ringbackRef.current.play().catch(e => console.log("Audio autoplay blocked by browser:", e));
+            ringbackRef.current.play().catch(e => console.log("Audio autoplay blocked:", e));
         } else if (ringbackRef.current) {
             ringbackRef.current.pause();
             ringbackRef.current.currentTime = 0;
