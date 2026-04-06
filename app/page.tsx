@@ -23,7 +23,6 @@ export default function DistributedFileHub() {
   const [profileName, setProfileName] = useState('User');
   const [isAdmin, setIsAdmin] = useState(false);
   
-  // NEW: OTP State Variables
   const [awaitingOTP, setAwaitingOTP] = useState(false);
   const [otpCode, setOtpCode] = useState('');
 
@@ -325,9 +324,6 @@ export default function DistributedFileHub() {
     else { setNewMessage(''); setChatFile(null); if (chatFileInputRef.current) chatFileInputRef.current.value = ""; }
   };
 
-  // =========================================================================
-  // CHANGED: The Auth handler now smoothly slides to the OTP screen!
-  // =========================================================================
   const handleAuth = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (isSignUp) {
@@ -338,7 +334,6 @@ export default function DistributedFileHub() {
       
       if (error) return showAlert("Error", error.message);
       
-      // Success! Move to the OTP Screen
       setAwaitingOTP(true); 
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -346,10 +341,10 @@ export default function DistributedFileHub() {
     }
   };
 
-  // NEW: Function to verify the 6-digit code
   const handleVerifyOTP = async (e?: React.FormEvent) => {
       e?.preventDefault();
-      if (!otpCode || otpCode.length !== 6) return showAlert("Notice", "Please enter the full 6-digit code.");
+      // CHANGED: We now correctly check for 8 digits
+      if (!otpCode || otpCode.length !== 8) return showAlert("Notice", "Please enter the full 8-digit code.");
       
       const { error } = await supabase.auth.verifyOtp({ 
           email, 
@@ -360,12 +355,10 @@ export default function DistributedFileHub() {
       if (error) {
           showAlert("Verification Failed", "Incorrect or expired code. Please try again.");
       } else {
-          // Success! Supabase logs them in instantly in the background.
           setAwaitingOTP(false);
           setOtpCode('');
       }
   };
-  // =========================================================================
 
   const handleForgotPassword = async () => {
     if (!email) return showAlert("Notice", "Please enter your email address first.");
@@ -438,25 +431,6 @@ export default function DistributedFileHub() {
     });
   };
 
-  const handleDeleteMessage = async (msgId: string, filePath: string | null) => {
-      showPrompt("Delete Message", "Type 'DELETE' to remove this message for everyone.", async (val) => {
-          if (val.trim().toUpperCase() !== 'DELETE') return showAlert("Error", "Validation failed.");
-          
-          if (filePath) {
-              await supabase.storage.from('user-files').remove([filePath]);
-          }
-          
-          const { error } = await supabase.from('messages').update({
-              content: '',
-              file_name: null,
-              file_path: null,
-              is_deleted: true
-          }).eq('id', msgId);
-
-          if (error) showAlert("Database Error", error.message);
-      });
-  };
-
   const toggleFolderStatus = async (folderId: string, column: string, currentStatus: boolean) => {
     const { error } = await supabase.from('folders').update({ [column]: !currentStatus }).eq('id', folderId);
     if (error) showAlert("Database Error", error.message); else fetchFolders();
@@ -470,7 +444,6 @@ export default function DistributedFileHub() {
   const canManageFolder = currentFolder?.user_id === user?.id || isAdmin;
   const isLockedForUser = selectedFolder && currentFolder?.is_locked && !canManageFolder;
 
-  // CHANGED: We now pass the OTP props into your AuthScreen
   if (!user) return (
       <>
           <Modal modal={modal} setModal={setModal} showPassword={showPassword} setShowPassword={setShowPassword} />

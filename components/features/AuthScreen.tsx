@@ -5,7 +5,7 @@ import NetworkBackground from '../ui/NetworkBackground';
 export default function AuthScreen({
     isSignUp, setIsSignUp, email, setEmail, password, setPassword, 
     username, setUsername, showPassword, setShowPassword, handleAuth, handleForgotPassword,
-    awaitingOTP, setAwaitingOTP, otpCode, setOtpCode, handleVerifyOTP // NEW PROPS
+    awaitingOTP, setAwaitingOTP, otpCode, setOtpCode, handleVerifyOTP
 }: any) {
 
     return (
@@ -20,27 +20,28 @@ export default function AuthScreen({
                     </div>
                 </div>
 
-                {/* OTP VERIFICATION VIEW */}
                 {awaitingOTP ? (
                     <form onSubmit={handleVerifyOTP} className="space-y-6 animate-in slide-in-from-right-8 duration-300">
                         <div className="text-center space-y-2 mb-6">
                             <h2 className="text-2xl font-bold tracking-tight">Verify Device</h2>
-                            <p className="text-[#888] text-xs">Enter the 6-digit security code sent to <span className="text-white">{email}</span></p>
+                            {/* CHANGED: Text updated to 8-digit */}
+                            <p className="text-[#888] text-xs">Enter the 8-digit security code sent to <span className="text-white">{email}</span></p>
                         </div>
 
                         <div className="space-y-4">
                             <input 
                                 type="text" 
-                                maxLength={6}
+                                maxLength={8} // CHANGED: Allow 8 characters
                                 value={otpCode} 
-                                onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} // Only allow numbers
-                                placeholder="000000" 
-                                className="w-full bg-black border border-[#333] focus:border-white text-white p-4 rounded-xl outline-none transition text-center text-3xl tracking-[0.5em] font-mono font-bold"
+                                onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} 
+                                placeholder="00000000" // CHANGED: 8 zeros
+                                className="w-full bg-black border border-[#333] focus:border-white text-white p-4 rounded-xl outline-none transition text-center text-3xl tracking-[0.3em] font-mono font-bold"
                                 required 
                             />
                         </div>
 
-                        <button type="submit" disabled={otpCode.length !== 6} className="w-full bg-white text-black font-black p-3.5 rounded-xl uppercase tracking-widest hover:bg-[#ddd] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+                        {/* CHANGED: Disable unless exactly 8 digits are typed */}
+                        <button type="submit" disabled={otpCode.length !== 8} className="w-full bg-white text-black font-black p-3.5 rounded-xl uppercase tracking-widest hover:bg-[#ddd] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-[0_0_15px_rgba(255,255,255,0.1)]">
                             Authorize
                         </button>
                         
@@ -51,7 +52,6 @@ export default function AuthScreen({
                         </div>
                     </form>
                 ) : (
-                    /* STANDARD LOGIN / SIGNUP VIEW */
                     <form onSubmit={handleAuth} className="space-y-5 animate-in slide-in-from-left-8 duration-300">
                         <div className="text-center space-y-1 mb-6">
                             <h2 className="text-2xl font-bold tracking-tight">{isSignUp ? 'Establish Node' : 'System Login'}</h2>
