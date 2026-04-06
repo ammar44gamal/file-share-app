@@ -12,7 +12,7 @@ export default function ChatInterface({
     friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders,
     messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile,
     chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend,
-    cancelRecording, chatScrollRef, replyTo, setReplyTo // NEW PROPS
+    cancelRecording, chatScrollRef, replyTo, setReplyTo
 }: any) {
 
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
@@ -24,7 +24,6 @@ export default function ChatInterface({
     const [pinnedChats, setPinnedChats] = useState<string[]>([]);
     const [lastActivity, setLastActivity] = useState<Record<string, number>>({});
 
-    // NEW: Menu and Forwarding States
     const [messageMenuOpen, setMessageMenuOpen] = useState<string | null>(null);
     const [forwardingMessage, setForwardingMessage] = useState<any>(null);
 
@@ -124,7 +123,6 @@ export default function ChatInterface({
         await supabase.from('messages').update({ content: '', file_name: null, file_path: null, is_deleted: true }).eq('id', id);
     };
 
-    // NEW: Handle sending a forwarded message to another friend
     const executeForward = async (friendId: string) => {
         if (!forwardingMessage) return;
         const { error } = await supabase.from('messages').insert([{
@@ -195,7 +193,6 @@ export default function ChatInterface({
                 )}
                 {leftView === 'contacts' && (
                     <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-transparent">
-                        {/* Contacts Code (Unchanged) */}
                         <div>
                             <h3 className="text-[#666] text-[10px] font-bold uppercase tracking-widest mb-2">Find Friends</h3>
                             <div className="flex gap-2">
@@ -222,8 +219,8 @@ export default function ChatInterface({
                                         <div key={req.id} className="flex items-center justify-between bg-[#0a0a0a] p-2.5 rounded border border-[#222]">
                                             <span className="text-xs font-bold text-slate-200">{req.username}</span>
                                             <div className="flex gap-2">
-                                                <button onClick={() => handleRequestAction(req.id, 'accept')} className="text-[10px] p-1.5 rounded bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-black transition">✓</button>
-                                                <button onClick={() => handleRequestAction(req.id, 'decline')} className="text-[10px] p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition">✕</button>
+                                                <button onClick={() => handleRequestAction(req.id, 'accept')} className="text-[10px] p-1.5 rounded bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-black transition" title="Accept">✓</button>
+                                                <button onClick={() => handleRequestAction(req.id, 'decline')} className="text-[10px] p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition" title="Reject">✕</button>
                                             </div>
                                         </div>
                                     ))}
@@ -278,7 +275,6 @@ export default function ChatInterface({
                                     const reactionCount = Object.keys(activeReactions).length;
                                     const uniqueEmojis = Array.from(new Set(Object.values(activeReactions)));
                                     
-                                    // Look up the replied message to show a preview
                                     const repliedMsg = msg.reply_to_id ? messages.find((m: any) => m.id === msg.reply_to_id) : null;
 
                                     if (msg.is_deleted) {
@@ -306,7 +302,6 @@ export default function ChatInterface({
                                                 </div>
                                             )}
 
-                                            {/* ACTION BUTTONS (REPLY/REACT MENU) */}
                                             <div className={`opacity-100 md:opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all duration-200 shrink-0 z-10 ${isMine ? 'order-1' : 'order-2'}`}>
                                                 <button onClick={() => setReactingTo(msg.id)} className="text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors" title="React">
                                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
@@ -317,9 +312,9 @@ export default function ChatInterface({
                                                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                                     </button>
                                                     
-                                                    {/* THE DROP DOWN MENU */}
+                                                    {/* UPWARD-OPENING MENU */}
                                                     {messageMenuOpen === msg.id && (
-                                                        <div className={`absolute ${isMine ? 'right-0' : 'left-0'} top-full mt-1 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl z-[80] w-36 overflow-hidden flex flex-col text-left animate-in fade-in zoom-in-95`}>
+                                                        <div className={`absolute ${isMine ? 'right-0' : 'left-0'} bottom-full mb-1 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl z-[80] w-36 overflow-hidden flex flex-col text-left animate-in fade-in zoom-in-95 origin-bottom`}>
                                                             <button onClick={() => { setReplyTo(msg); setMessageMenuOpen(null); }} className="px-4 py-2.5 text-xs text-white hover:bg-[#333] flex items-center gap-2 transition">↩ Reply</button>
                                                             <button onClick={() => { setForwardingMessage(msg); setMessageMenuOpen(null); }} className="px-4 py-2.5 text-xs text-white hover:bg-[#333] flex items-center gap-2 transition">➦ Forward</button>
                                                             {isMine && (
@@ -332,7 +327,6 @@ export default function ChatInterface({
 
                                             <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-3 py-2 shadow-md z-10 relative ${isMine ? 'order-2 bg-blue-600 text-white rounded-br-none' : 'order-1 bg-[#0a0a0a] border border-[#222] text-slate-200 rounded-bl-none'}`}>
                                                 
-                                                {/* FORWARDED TAG */}
                                                 {msg.is_forwarded && (
                                                     <div className="flex items-center gap-1 text-[9px] text-white/60 mb-1 italic font-medium">
                                                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 10 20 15 15 20"></polyline><path d="M4 4v7a4 4 0 0 0 4 4h12"></path></svg>
@@ -340,15 +334,9 @@ export default function ChatInterface({
                                                     </div>
                                                 )}
 
-                                                {/* REPLY PREVIEW BUBBLE */}
                                                 {msg.reply_to_id && (
-                                                    <div 
-                                                        onClick={() => document.getElementById('msg-' + msg.reply_to_id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                                                        className={`border-l-4 ${isMine ? 'bg-black/20 border-white/50 hover:bg-black/30' : 'bg-[#1a1a1a] border-blue-500 hover:bg-[#222]'} p-1.5 mb-1.5 rounded shadow-sm text-left cursor-pointer transition`}
-                                                    >
-                                                        <p className={`text-[10px] font-bold mb-0.5 ${isMine ? 'text-white' : 'text-blue-400'}`}>
-                                                            {repliedMsg ? (repliedMsg.sender_id === user.id ? 'You' : activeChat.username) : 'Message'}
-                                                        </p>
+                                                    <div onClick={() => document.getElementById('msg-' + msg.reply_to_id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })} className={`border-l-4 ${isMine ? 'bg-black/20 border-white/50 hover:bg-black/30' : 'bg-[#1a1a1a] border-blue-500 hover:bg-[#222]'} p-1.5 mb-1.5 rounded shadow-sm text-left cursor-pointer transition`}>
+                                                        <p className={`text-[10px] font-bold mb-0.5 ${isMine ? 'text-white' : 'text-blue-400'}`}>{repliedMsg ? (repliedMsg.sender_id === user.id ? 'You' : activeChat.username) : 'Message'}</p>
                                                         <p className="text-[11px] text-white/70 truncate">{repliedMsg?.content || (repliedMsg?.file_name ? `📎 ${repliedMsg.file_name}` : 'Message unavailable')}</p>
                                                     </div>
                                                 )}
@@ -404,16 +392,13 @@ export default function ChatInterface({
 
                         <form onSubmit={handleSendMessage} className="p-3 bg-transparent border-t border-[#222] z-10 flex flex-col gap-2 shrink-0">
                             
-                            {/* REPLYING PREVIEW ABOVE INPUT */}
                             {replyTo && (
                                 <div className="flex items-center justify-between bg-[#111] border-l-4 border-blue-500 p-2 rounded-xl mx-1 shadow-inner animate-in slide-in-from-bottom-2">
                                     <div className="flex-1 min-w-0 pl-2">
                                         <p className="text-[11px] text-blue-400 font-bold">{replyTo.sender_id === user.id ? 'You' : activeChat.username}</p>
                                         <p className="text-[12px] text-[#aaa] truncate">{replyTo.content || (replyTo.file_name ? `📎 ${replyTo.file_name}` : 'Voice Note')}</p>
                                     </div>
-                                    <button type="button" onClick={() => setReplyTo(null)} className="text-[#666] hover:text-white w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#333] transition">
-                                        ✕
-                                    </button>
+                                    <button type="button" onClick={() => setReplyTo(null)} className="text-[#666] hover:text-white w-7 h-7 flex items-center justify-center rounded-full hover:bg-[#333] transition">✕</button>
                                 </div>
                             )}
 
@@ -457,7 +442,6 @@ export default function ChatInterface({
                 )}
             </div>
 
-            {/* FORWARDING OVERLAY */}
             {forwardingMessage && (
                 <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-[#111] border border-[#333] rounded-xl p-5 w-full max-w-sm shadow-2xl flex flex-col">
