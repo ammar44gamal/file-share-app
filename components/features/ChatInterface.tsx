@@ -17,8 +17,6 @@ export default function ChatInterface({
 
     const [previewData, setPreviewData] = useState<{ url: string, name: string } | null>(null);
     const [confirmDelete, setConfirmDelete] = useState<{id: string, path: string | null} | null>(null);
-    
-    // NEW: State to track which message we are currently reacting to
     const [reactingTo, setReactingTo] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -55,30 +53,34 @@ export default function ChatInterface({
         }).eq('id', id);
     };
 
-    // NEW: Function to handle saving an emoji reaction
+    // NEW: Safe JSON parser to handle Supabase real-time quirks
+    const parseReactions = (reactions: any) => {
+        if (!reactions) return {};
+        if (typeof reactions === 'string') {
+            try { return JSON.parse(reactions); } catch (e) { return {}; }
+        }
+        return reactions;
+    };
+
     const handleReact = async (msgId: string, emoji: string, currentReactions: any) => {
-        const reactions = currentReactions || {};
+        const reactions = parseReactions(currentReactions);
         const newReactions = { ...reactions };
 
-        // If you click the same emoji again, it removes it. Otherwise, it sets/changes it.
         if (newReactions[user.id] === emoji) {
-            delete newReactions[user.id];
+            delete newReactions[user.id]; // Remove if clicked twice
         } else {
-            newReactions[user.id] = emoji;
+            newReactions[user.id] = emoji; // Add/Change emoji
         }
 
-        // Optimistic UI Update so it feels instant
         setMessages((prev: any[]) => prev.map(m => m.id === msgId ? { ...m, reactions: newReactions } : m));
         setReactingTo(null);
 
-        // Save to Database
         await supabase.from('messages').update({ reactions: newReactions }).eq('id', msgId);
     };
 
     return (
         <div className="animate-in slide-in-from-bottom-4 duration-500 h-full relative">
             
-            {/* NEW: Invisible overlay that closes the emoji menu if you click anywhere else on the screen */}
             {reactingTo && (
                 <div className="fixed inset-0 z-[50]" onClick={() => setReactingTo(null)}></div>
             )}
@@ -116,7 +118,7 @@ export default function ChatInterface({
                                     <button onClick={() => setActiveChat(null)} className="text-[#888] hover:text-white text-[10px] font-bold px-2 py-1 border border-[#333] rounded hover:bg-[#333]">✕</button>
                                 </div>
 
-                                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-2 md:p-3 space-y-1.5 z-10">
+                                <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-2 md:p-4 space-y-1.5 z-10">
                                     {messages.length === 0 ? (
                                         <div className="h-full flex items-center justify-center text-[#444] text-[10px] font-bold uppercase tracking-widest italic text-center px-4">
                                             No messages yet. Begin transmission.
@@ -125,6 +127,11 @@ export default function ChatInterface({
                                         messages.map((msg: any) => {
                                             const isMine = msg.sender_id === user.id;
                                             
+                                            // Process reactions safely
+                                            const activeReactions = parseReactions(msg.reactions);
+                                            const reactionCount = Object.keys(activeReactions).length;
+                                            const uniqueEmojis = Array.from(new Set(Object.values(activeReactions)));
+
                                             if (msg.is_deleted) {
                                                 return (
                                                     <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -140,33 +147,31 @@ export default function ChatInterface({
                                             const isImageFile = msg.file_name && msg.file_name.match(/\.(jpeg|jpg|gif|png|webp)$/i);
                                             
                                             return (
-                                                // CHANGED: Added mb-2.5 to give space for the floating reactions at the bottom
-                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-2.5`}>
+                                                // CHANGED: Increased bottom margin (mb-5) to give the WhatsApp reactions room to hang down
+                                                <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-5`}>
                                                     
-                                                    {/* NEW: The Emoji Picker Menu */}
+                                                    {/* CHANGED: Emoji Picker moved right above the message like WhatsApp */}
                                                     {reactingTo === msg.id && (
-                                                        <div className={`absolute top-0 -translate-y-[80%] ${isMine ? 'right-10' : 'left-10'} z-[60] bg-[#1a1a1a] border border-[#333] rounded-full shadow-2xl flex items-center px-2 py-1.5 gap-1.5 animate-in zoom-in-95 duration-200`}>
+                                                        <div className={`absolute bottom-[calc(100%+4px)] ${isMine ? 'right-0' : 'left-0'} z-[60] bg-[#222] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.5)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
                                                             {['👍', '❤️', '😂', '😮', '😢', '🙏'].map(e => (
-                                                                <button key={e} onClick={() => handleReact(msg.id, e, msg.reactions)} className="hover:scale-125 hover:-translate-y-1 transition-all text-lg focus:outline-none">{e}</button>
+                                                                <button key={e} onClick={() => handleReact(msg.id, e, msg.reactions)} className="hover:scale-125 hover:-translate-y-1 transition-all text-xl focus:outline-none">{e}</button>
                                                             ))}
                                                         </div>
                                                     )}
 
-                                                    {/* NEW: The Action Buttons (Smile & Trash) */}
                                                     <div className={`opacity-100 md:opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all duration-200 shrink-0 z-10 ${isMine ? 'order-1' : 'order-2'}`}>
                                                         <button 
                                                             onClick={() => setReactingTo(msg.id)} 
                                                             className="text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors" 
-                                                            title="React to Message"
+                                                            title="React"
                                                         >
-                                                            {/* Smiley Face SVG */}
                                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
                                                         </button>
                                                         {isMine && (
                                                             <button 
                                                                 onClick={() => setConfirmDelete({id: msg.id, path: msg.file_path})} 
                                                                 className="text-red-500/70 hover:text-red-500 bg-[#111] border border-[#333] hover:border-red-500/50 rounded-full p-1.5 flex items-center justify-center shadow-lg transition-colors shrink-0" 
-                                                                title="Delete Message"
+                                                                title="Delete"
                                                             >
                                                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                                                             </button>
@@ -175,15 +180,13 @@ export default function ChatInterface({
 
                                                     <div className={`max-w-[85%] md:max-w-[60%] rounded-xl px-2.5 py-1.5 shadow-md z-10 relative ${isMine ? 'order-2 bg-blue-600 text-white rounded-br-none' : 'order-1 bg-[#222] text-slate-200 rounded-bl-none'}`}>
                                                         
-                                                        {/* NEW: Render the active Reactions attached to the bottom of the bubble */}
-                                                        {(msg.reactions && Object.keys(msg.reactions).length > 0) && (
-                                                            <div className={`absolute -bottom-2 ${isMine ? 'left-2' : 'right-2'} bg-[#1a1a1a] border border-[#444] rounded-full px-1.5 py-0.5 text-[10px] shadow-sm flex items-center gap-0.5 z-20`}>
-                                                                {/* Get unique emojis (in case multiple people clicked the same one) */}
-                                                                {Array.from(new Set(Object.values(msg.reactions))).map((emoji: any, i) => (
+                                                        {/* CHANGED: WhatsApp style reactions container! Thick black border makes it look like it's carved out of the bubble */}
+                                                        {reactionCount > 0 && (
+                                                            <div className={`absolute -bottom-3.5 right-2 bg-[#222] border-[3px] border-black rounded-full px-1.5 py-0.5 text-[12px] shadow-sm flex items-center justify-center gap-0.5 z-20`}>
+                                                                {uniqueEmojis.map((emoji: any, i) => (
                                                                     <span key={i} className="leading-none">{emoji}</span>
                                                                 ))}
-                                                                {/* Show a counter if more than 1 person reacted */}
-                                                                {Object.keys(msg.reactions).length > 1 && <span className="text-[#888] text-[8px] font-bold ml-0.5 leading-none">{Object.keys(msg.reactions).length}</span>}
+                                                                {reactionCount > 1 && <span className="text-[#aaa] text-[9px] font-bold ml-0.5 leading-none">{reactionCount}</span>}
                                                             </div>
                                                         )}
                                                         
