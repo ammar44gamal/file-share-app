@@ -60,7 +60,7 @@ export default function FileExplorer({
                     </div>
                     <div className="mt-4 md:mt-3 flex items-center gap-2 pl-1">
                         <input type="checkbox" checked={isPublic} onChange={e => setIsPublic(e.target.checked)} id="pvis" className="rounded bg-black border-[#333] cursor-pointer w-3 h-3" />
-                        <label htmlFor="pvis" className="text-[9px] font-bold text-[#444] uppercase tracking-widest cursor-pointer hover:text-white transition">PUBLIC GROUP</label>
+                        <label htmlFor="pvis" className="text-[9px] font-bold text-[#444] uppercase tracking-widest cursor-pointer hover:text-white transition">PUBLIC</label>
                     </div>
                 </section>
             ) : (
