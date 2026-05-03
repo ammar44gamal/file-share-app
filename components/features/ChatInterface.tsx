@@ -753,11 +753,11 @@ export default function ChatInterface({
 
                     <div className={`z-10 flex flex-col items-center justify-center transition-opacity duration-500 ${(callStatus === 'connected' && isVideoCall && !isMinimized) ? 'opacity-0' : 'opacity-100'} ${isMinimized ? 'h-full pt-4' : 'mb-12'}`}>
                         <div className={`${isMinimized ? 'w-10 h-10 text-lg mb-1.5' : 'w-28 h-28 text-5xl mb-6 border-2'} rounded-full bg-[#111] border-[#333] flex items-center justify-center text-slate-200 font-bold shadow-[0_0_50px_rgba(0,0,0,0.5)] relative pointer-events-none`}>
-                            {activeChat?.username?.charAt(0).toUpperCase() || incomingCall?.caller_name?.charAt(0).toUpperCase()}
+                            {incomingCall ? incomingCall.caller_name?.charAt(0).toUpperCase() : activeChat?.username?.charAt(0).toUpperCase()}
                             {callStatus === 'ringing' && <span className="absolute inset-0 rounded-full border-4 border-blue-500 animate-ping opacity-50"></span>}
                         </div>
                         <h2 className={`text-white font-bold tracking-tight pointer-events-none ${isMinimized ? 'text-xs mb-0.5' : 'text-3xl mb-2'}`}>
-                            {activeChat?.username || incomingCall?.caller_name}
+                            {incomingCall ? incomingCall.caller_name : activeChat?.username}
                         </h2>
                         
                         <p className={`text-[#888] font-bold pointer-events-none ${isMinimized ? 'text-[8px]' : 'text-xs uppercase tracking-widest animate-pulse'}`}>
