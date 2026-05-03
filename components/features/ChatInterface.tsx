@@ -27,7 +27,6 @@ export default function ChatInterface({
     const [messageMenuOpen, setMessageMenuOpen] = useState<string | null>(null);
     const [forwardingMessage, setForwardingMessage] = useState<any>(null);
 
-    // NEW: Realtime Online Presence State
     const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
 
     // ==========================================
@@ -68,7 +67,6 @@ export default function ChatInterface({
         if (savedActivity) setLastActivity(JSON.parse(savedActivity));
     }, []);
 
-    // Supabase Realtime Presence Tracker
     useEffect(() => {
         if (!user) return;
         const presenceChannel = supabase.channel('global-presence', {
@@ -584,7 +582,9 @@ export default function ChatInterface({
                                         </div>
                                     </div>
                                 ) : (
-                                    messages.map((msg: any) => {
+                                    messages.map((msg: any, index: number) => {
+                                        const isTopMessage = index < 2; // FIX: Smart overflow check
+                                        
                                         const isMine = msg.sender_id === user.id;
                                         const activeReactions = parseReactions(msg.reactions);
                                         const reactionCount = Object.keys(activeReactions).length;
@@ -621,8 +621,9 @@ export default function ChatInterface({
                                         return (
                                             <div key={msg.id} id={`msg-${msg.id}`} className={`flex ${isMine ? 'justify-end' : 'justify-start'} group items-center gap-2 relative mb-5 ${(reactingTo === msg.id || messageMenuOpen === msg.id) ? 'z-[50]' : 'z-10'}`}>
                                                 
+                                                {/* FIX: Smart Reaction Bar Positioning */}
                                                 {reactingTo === msg.id && (
-                                                    <div className={`absolute bottom-[calc(100%+4px)] ${isMine ? 'right-0' : 'left-0'} z-[70] bg-[#111] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.8)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
+                                                    <div className={`absolute ${isTopMessage ? 'top-[calc(100%+4px)] origin-top' : 'bottom-[calc(100%+4px)] origin-bottom'} ${isMine ? 'right-0' : 'left-0'} z-[70] bg-[#111] border border-[#333] rounded-full shadow-[0_5px_15px_rgba(0,0,0,0.8)] flex items-center px-3 py-2 gap-2 animate-in zoom-in-95 duration-200`}>
                                                         {['👍', '❤️', '😂', '😮', '😢', '🙏'].map((emoji) => (
                                                             <button key={emoji} onClick={(e) => { e.stopPropagation(); handleReact(msg.id, emoji, msg.reactions); }} className="hover:scale-125 hover:-translate-y-1 transition-all text-xl focus:outline-none">{emoji}</button>
                                                         ))}
@@ -639,8 +640,9 @@ export default function ChatInterface({
                                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                                         </button>
                                                         
+                                                        {/* FIX: Smart Action Menu Positioning */}
                                                         {messageMenuOpen === msg.id && (
-                                                            <div className={`absolute ${isMine ? 'right-0' : 'left-0'} bottom-full mb-1 bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl z-[80] w-36 overflow-hidden flex flex-col text-left animate-in fade-in zoom-in-95 origin-bottom`}>
+                                                            <div className={`absolute ${isMine ? 'right-0' : 'left-0'} ${isTopMessage ? 'top-full mt-1 origin-top' : 'bottom-full mb-1 origin-bottom'} bg-[#1a1a1a] border border-[#333] rounded-xl shadow-2xl z-[80] w-36 overflow-hidden flex flex-col text-left animate-in fade-in zoom-in-95`}>
                                                                 <button onClick={() => { setReplyTo(msg); setMessageMenuOpen(null); }} className="px-4 py-2.5 text-xs text-white hover:bg-[#333] flex items-center gap-2 transition">↩ Reply</button>
                                                                 <button onClick={() => { setForwardingMessage(msg); setMessageMenuOpen(null); }} className="px-4 py-2.5 text-xs text-white hover:bg-[#333] flex items-center gap-2 transition">➦ Forward</button>
                                                                 {isMine && (
@@ -789,7 +791,6 @@ export default function ChatInterface({
 
                     <video ref={remoteVideoRef} autoPlay playsInline className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${(callStatus === 'connected' && isVideoCall) ? 'opacity-100' : 'opacity-0'}`} />
                     
-                    {/* Local Video - Bumped up to bottom-32 so it doesn't overlap action buttons */}
                     <div className={`absolute ${isMinimized ? 'bottom-2 right-2 w-12 h-16 border-[#444]' : 'bottom-32 right-6 w-32 h-48 border-[#333]'} bg-black border rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)] z-20 transition-all duration-500 ${(isVideoCall && !isVideoOff && (callStatus === 'connected' || callStatus === 'calling')) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
                         <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
                     </div>
@@ -803,7 +804,6 @@ export default function ChatInterface({
                             {incomingCall ? incomingCall.caller_name : activeChat?.username}
                         </h2>
                         
-                        {/* CHANGED: Simpler, cleaner call status text */}
                         <p className={`text-[#888] font-bold pointer-events-none ${isMinimized ? 'text-[8px]' : 'text-xs uppercase tracking-widest animate-pulse'}`}>
                             {callStatus === 'calling' ? `Requesting ${isVideoCall ? 'Video' : 'Voice'} Call...` : callStatus === 'ringing' ? `Incoming ${isVideoCall ? 'Video' : 'Voice'} Call...` : formatDuration(callDuration)}
                         </p>
