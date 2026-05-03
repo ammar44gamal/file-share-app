@@ -89,7 +89,7 @@ export default function ChatInterface({
         setTimeout(() => {
             if (chatScrollRef.current) chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
         }, 10);
-    }, [messages, activeChat, isTyping, chatScrollRef]);
+    }, [messages?.length, activeChat, isTyping, chatScrollRef]); //Changed to messages?.length
 
     useEffect(() => {
         isLoadingHistory.current = true;
