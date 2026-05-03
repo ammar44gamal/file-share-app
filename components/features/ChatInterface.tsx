@@ -20,12 +20,16 @@ export default function ChatInterface({
     const [reactingTo, setReactingTo] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    const [leftView, setLeftView] = useState<'chats' | 'contacts'>('chats');
+    // CHANGED: Added 'requests' to the leftView state
+    const [leftView, setLeftView] = useState<'chats' | 'search' | 'requests'>('chats');
     const [pinnedChats, setPinnedChats] = useState<string[]>([]);
     const [lastActivity, setLastActivity] = useState<Record<string, number>>({});
 
     const [messageMenuOpen, setMessageMenuOpen] = useState<string | null>(null);
     const [forwardingMessage, setForwardingMessage] = useState<any>(null);
+
+    // NEW: Realtime Online Presence State
+    const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
 
     // ==========================================
     // ADVANCED WEBRTC CALLING STATE
@@ -49,7 +53,6 @@ export default function ChatInterface({
     const localStreamRef = useRef<MediaStream | null>(null);
     const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
 
-    // CHANGED: We now have TWO audio refs! One for receiving, one for dialing out.
     const ringtoneRef = useRef<HTMLAudioElement>(null);
     const ringbackRef = useRef<HTMLAudioElement>(null);
 
@@ -65,6 +68,25 @@ export default function ChatInterface({
         const savedActivity = localStorage.getItem('filehub_chat_activity');
         if (savedActivity) setLastActivity(JSON.parse(savedActivity));
     }, []);
+
+    // NEW: Supabase Realtime Presence Tracker
+    useEffect(() => {
+        if (!user) return;
+        const presenceChannel = supabase.channel('global-presence', {
+            config: { presence: { key: user.id } },
+        });
+        
+        presenceChannel.on('presence', { event: 'sync' }, () => {
+            const state = presenceChannel.presenceState();
+            setOnlineUsers(Object.keys(state));
+        }).subscribe(async (status) => {
+            if (status === 'SUBSCRIBED') {
+                await presenceChannel.track({ online_at: new Date().toISOString() });
+            }
+        });
+        
+        return () => { supabase.removeChannel(presenceChannel); };
+    }, [user]);
 
     useEffect(() => {
         setTimeout(() => {
@@ -114,9 +136,7 @@ export default function ChatInterface({
         if (!isVisible && callStatus !== 'idle') setIsMinimized(true);
     }, [isVisible, callStatus]);
 
-    // Handle Fixed Ringtone Playback based on Call Status
     useEffect(() => {
-        // 1. If someone is calling YOU (ringing) -> Play Ringtone
         if (callStatus === 'ringing' && ringtoneRef.current) {
             ringtoneRef.current.play().catch(e => console.log("Audio autoplay blocked:", e));
         } else if (ringtoneRef.current) {
@@ -124,7 +144,6 @@ export default function ChatInterface({
             ringtoneRef.current.currentTime = 0;
         }
 
-        // 2. If YOU are calling someone (calling) -> Play Ringback
         if (callStatus === 'calling' && ringbackRef.current) {
             ringbackRef.current.play().catch(e => console.log("Audio autoplay blocked:", e));
         } else if (ringbackRef.current) {
@@ -166,7 +185,11 @@ export default function ChatInterface({
                 if (data.target_id !== user.id) return;
 
                 if (data.type === 'offer') {
-                    setIncomingCall({ caller_id: data.sender_id, caller_name: data.caller_name, offer: data.offer, isVideo: data.isVideo });
+                    // FIX: Look up the caller's true username from the friends list!
+                    const callerFriend = friends.find((f: any) => f.friend_id === data.sender_id);
+                    const displayCallerName = callerFriend ? callerFriend.username : data.caller_name;
+                    
+                    setIncomingCall({ caller_id: data.sender_id, caller_name: displayCallerName, offer: data.offer, isVideo: data.isVideo });
                     setCallStatus('ringing');
                     setActiveCallFriendId(data.sender_id);
                     setIsVideoCall(data.isVideo);
@@ -203,7 +226,7 @@ export default function ChatInterface({
             .subscribe();
 
         return () => { supabase.removeChannel(channel); };
-    }, [user, showAlert]);
+    }, [user, friends, showAlert]);
 
     const sendSignal = (type: string, target_id: string, extraData: any = {}) => {
         supabase.channel('webrtc-global').send({
@@ -412,21 +435,37 @@ export default function ChatInterface({
 
     return (
         <>
-            {/* CHANGED: We now have two separate audio players loaded from your public folder */}
             <audio ref={ringtoneRef} src="/ringtone.mp3" loop preload="auto" />
             <audio ref={ringbackRef} src="/ringback.mp3" loop preload="auto" />
             
-            {/* MAIN CHAT UI - Hidden if !isVisible so you can look at folders! */}
             <div className={`${isVisible ? 'flex' : 'hidden'} animate-in slide-in-from-bottom-4 duration-500 h-full relative bg-transparent md:bg-black/50 md:backdrop-blur-xl md:border border-[#222] rounded-xl shadow-2xl overflow-hidden flex-col md:flex-row`}>
                 
                 {/* LEFT SIDEBAR */}
                 <div className={`w-full md:w-72 lg:w-80 flex-col border-r border-[#222] bg-transparent shrink-0 h-full ${activeChat ? 'hidden md:flex' : 'flex'}`}>
+                    
+                    {/* CHANGED: Dedicated Notifications Icon & Headers */}
                     <div className="p-4 border-b border-[#222] flex justify-between items-center bg-transparent">
-                        <h2 className="font-bold text-white text-sm tracking-wide">{leftView === 'chats' ? 'Messages' : 'Network Nodes'}</h2>
-                        <button onClick={() => setLeftView(leftView === 'chats' ? 'contacts' : 'chats')} className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] px-2.5 py-1.5 rounded transition">
-                            {leftView === 'chats' ? '+ Add' : '← Back'}
-                        </button>
+                        <h2 className="font-bold text-white text-sm tracking-wide">
+                            {leftView === 'chats' ? 'Messages' : leftView === 'search' ? 'Network Nodes' : 'Requests'}
+                        </h2>
+                        
+                        {leftView === 'chats' ? (
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => setLeftView('requests')} className="relative text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] p-1.5 rounded transition" title="Incoming Requests">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                                    {friendRequests.length > 0 && <span className="absolute -top-1.5 -right-1.5 bg-red-600 text-white text-[9px] w-4 h-4 flex items-center justify-center rounded-full border border-black">{friendRequests.length}</span>}
+                                </button>
+                                <button onClick={() => setLeftView('search')} className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] px-2.5 py-1.5 rounded transition">
+                                    + Add
+                                </button>
+                            </div>
+                        ) : (
+                            <button onClick={() => setLeftView('chats')} className="text-[10px] font-bold uppercase tracking-widest text-[#888] hover:text-white bg-[#111] border border-[#333] hover:bg-[#222] px-2.5 py-1.5 rounded transition">
+                                ← Back
+                            </button>
+                        )}
                     </div>
+
                     {leftView === 'chats' && (
                         <div className="flex-1 overflow-y-auto scrollbar-hide bg-transparent">
                             {friends.length === 0 ? ( <div className="p-6 text-center text-xs text-[#666] italic">No established connections. Click '+ Add' to find users.</div> ) : (
@@ -453,7 +492,7 @@ export default function ChatInterface({
                             )}
                         </div>
                     )}
-                    {leftView === 'contacts' && (
+                    {leftView === 'search' && (
                         <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-transparent">
                             <div>
                                 <h3 className="text-[#666] text-[10px] font-bold uppercase tracking-widest mb-2">Find Friends</h3>
@@ -470,6 +509,10 @@ export default function ChatInterface({
                                     ))}
                                 </div>
                             </div>
+                        </div>
+                    )}
+                    {leftView === 'requests' && (
+                        <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-transparent">
                             <div>
                                 <h3 className="text-[#666] text-[10px] font-bold uppercase tracking-widest mb-2 flex items-center justify-between">
                                     Incoming Requests
@@ -481,7 +524,7 @@ export default function ChatInterface({
                                             <div key={req.id} className="flex items-center justify-between bg-[#0a0a0a] p-2.5 rounded border border-[#222]">
                                                 <span className="text-xs font-bold text-slate-200">{req.username}</span>
                                                 <div className="flex gap-2">
-                                                    <button onClick={() => handleRequestAction(req.id, 'accept')} className="text-[10px] p-1.5 rounded bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-black transition" title="Accept">✓</button>
+                                                    <button onClick={() => { handleRequestAction(req.id, 'accept'); setLeftView('chats'); }} className="text-[10px] p-1.5 rounded bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-black transition" title="Accept">✓</button>
                                                     <button onClick={() => handleRequestAction(req.id, 'decline')} className="text-[10px] p-1.5 rounded bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition" title="Reject">✕</button>
                                                 </div>
                                             </div>
@@ -515,7 +558,11 @@ export default function ChatInterface({
                                     </div>
                                     <div>
                                         <p className="text-white font-bold text-sm leading-tight">{activeChat.username}</p>
-                                        <p className="text-green-500 text-[9px] font-bold uppercase tracking-widest">End-to-End Encrypted</p>
+                                        
+                                        {/* CHANGED: Dynamic Online/Offline Status */}
+                                        <p className={`text-[9px] font-bold uppercase tracking-widest ${onlineUsers.includes(activeChat.friend_id) ? 'text-green-500' : 'text-[#666]'}`}>
+                                            {onlineUsers.includes(activeChat.friend_id) ? '● Online' : '○ Offline'}
+                                        </p>
                                     </div>
                                 </div>
                                 
@@ -746,7 +793,6 @@ export default function ChatInterface({
 
                     <video ref={remoteVideoRef} autoPlay playsInline className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${(callStatus === 'connected' && isVideoCall) ? 'opacity-100' : 'opacity-0'}`} />
                     
-                    {/* Local Video - Bumped up to bottom-32 so it doesn't overlap action buttons */}
                     <div className={`absolute ${isMinimized ? 'bottom-2 right-2 w-12 h-16 border-[#444]' : 'bottom-32 right-6 w-32 h-48 border-[#333]'} bg-black border rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)] z-20 transition-all duration-500 ${(isVideoCall && !isVideoOff && (callStatus === 'connected' || callStatus === 'calling')) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
                         <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
                     </div>
