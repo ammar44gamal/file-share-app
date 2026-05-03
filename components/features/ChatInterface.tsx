@@ -20,7 +20,6 @@ export default function ChatInterface({
     const [reactingTo, setReactingTo] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // CHANGED: Added 'requests' to the leftView state
     const [leftView, setLeftView] = useState<'chats' | 'search' | 'requests'>('chats');
     const [pinnedChats, setPinnedChats] = useState<string[]>([]);
     const [lastActivity, setLastActivity] = useState<Record<string, number>>({});
@@ -69,7 +68,7 @@ export default function ChatInterface({
         if (savedActivity) setLastActivity(JSON.parse(savedActivity));
     }, []);
 
-    // NEW: Supabase Realtime Presence Tracker
+    // Supabase Realtime Presence Tracker
     useEffect(() => {
         if (!user) return;
         const presenceChannel = supabase.channel('global-presence', {
@@ -185,7 +184,6 @@ export default function ChatInterface({
                 if (data.target_id !== user.id) return;
 
                 if (data.type === 'offer') {
-                    // FIX: Look up the caller's true username from the friends list!
                     const callerFriend = friends.find((f: any) => f.friend_id === data.sender_id);
                     const displayCallerName = callerFriend ? callerFriend.username : data.caller_name;
                     
@@ -443,7 +441,6 @@ export default function ChatInterface({
                 {/* LEFT SIDEBAR */}
                 <div className={`w-full md:w-72 lg:w-80 flex-col border-r border-[#222] bg-transparent shrink-0 h-full ${activeChat ? 'hidden md:flex' : 'flex'}`}>
                     
-                    {/* CHANGED: Dedicated Notifications Icon & Headers */}
                     <div className="p-4 border-b border-[#222] flex justify-between items-center bg-transparent">
                         <h2 className="font-bold text-white text-sm tracking-wide">
                             {leftView === 'chats' ? 'Messages' : leftView === 'search' ? 'Network Nodes' : 'Requests'}
@@ -559,7 +556,6 @@ export default function ChatInterface({
                                     <div>
                                         <p className="text-white font-bold text-sm leading-tight">{activeChat.username}</p>
                                         
-                                        {/* CHANGED: Dynamic Online/Offline Status */}
                                         <p className={`text-[9px] font-bold uppercase tracking-widest ${onlineUsers.includes(activeChat.friend_id) ? 'text-green-500' : 'text-[#666]'}`}>
                                             {onlineUsers.includes(activeChat.friend_id) ? '● Online' : '○ Offline'}
                                         </p>
@@ -793,6 +789,7 @@ export default function ChatInterface({
 
                     <video ref={remoteVideoRef} autoPlay playsInline className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ${(callStatus === 'connected' && isVideoCall) ? 'opacity-100' : 'opacity-0'}`} />
                     
+                    {/* Local Video - Bumped up to bottom-32 so it doesn't overlap action buttons */}
                     <div className={`absolute ${isMinimized ? 'bottom-2 right-2 w-12 h-16 border-[#444]' : 'bottom-32 right-6 w-32 h-48 border-[#333]'} bg-black border rounded-xl overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.8)] z-20 transition-all duration-500 ${(isVideoCall && !isVideoOff && (callStatus === 'connected' || callStatus === 'calling')) ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'}`}>
                         <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover scale-x-[-1]" />
                     </div>
@@ -806,8 +803,9 @@ export default function ChatInterface({
                             {incomingCall ? incomingCall.caller_name : activeChat?.username}
                         </h2>
                         
+                        {/* CHANGED: Simpler, cleaner call status text */}
                         <p className={`text-[#888] font-bold pointer-events-none ${isMinimized ? 'text-[8px]' : 'text-xs uppercase tracking-widest animate-pulse'}`}>
-                            {callStatus === 'calling' ? `Requesting Secure ${isVideoCall ? 'Video' : 'Voice'} Call...` : callStatus === 'ringing' ? `Incoming Encrypted ${isVideoCall ? 'Video' : 'Voice'} Call...` : formatDuration(callDuration)}
+                            {callStatus === 'calling' ? `Requesting ${isVideoCall ? 'Video' : 'Voice'} Call...` : callStatus === 'ringing' ? `Incoming ${isVideoCall ? 'Video' : 'Voice'} Call...` : formatDuration(callDuration)}
                         </p>
                     </div>
 
