@@ -441,7 +441,7 @@ export default function ChatInterface({
                     
                     <div className="p-4 border-b border-[#222] flex justify-between items-center bg-transparent">
                         <h2 className="font-bold text-white text-sm tracking-wide">
-                            {leftView === 'chats' ? 'Messages' : leftView === 'search' ? 'Network Nodes' : 'Requests'}
+                            {leftView === 'chats' ? 'Messages' : leftView === 'search' ? 'Find Your Network' : 'Requests'}
                         </h2>
                         
                         {leftView === 'chats' ? (
