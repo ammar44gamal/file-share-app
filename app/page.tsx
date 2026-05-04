@@ -58,7 +58,7 @@ export default function DistributedFileHub() {
   const [newMessage, setNewMessage] = useState('');
   const [chatFile, setChatFile] = useState<File | null>(null);
   
-  // NEW: State to track what message we are replying to
+  //State to track what message we are replying to
   const [replyTo, setReplyTo] = useState<any>(null);
   
   const [unreadSenders, setUnreadSenders] = useState<string[]>([]);

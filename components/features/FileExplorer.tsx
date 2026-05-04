@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 import FileThumbnail from '../ui/FileThumbnail';
 
 export default function FileExplorer({
-    // CHANGED: Expected props are now 'files' and 'setFiles'
+    
     isLockedForUser, currentFolder, fileInputRef, files, setFiles, handleUpload, uploading,
     isPublic, setIsPublic, filesList, formatBytes, handleDownload, user, canManageFolder,
     toggleFilePrivacy, handleDeleteFile
@@ -29,7 +29,7 @@ export default function FileExplorer({
                         <div className="flex-1 flex flex-col sm:flex-row items-center gap-3 w-full">
                             
                             <div className="flex-1 relative w-full flex items-center gap-3 border border-dashed border-[#444] bg-black/40 hover:bg-black/80 rounded-lg p-1.5 transition group">
-                                {/* CHANGED: Added 'multiple' attribute and updated onChange */}
+                                {/*Added 'multiple' attribute and updated onChange */}
                                 <input 
                                     type="file" 
                                     multiple
@@ -41,7 +41,7 @@ export default function FileExplorer({
                                 <div className="bg-black border border-[#333] text-white text-xs px-4 py-2 rounded-md font-medium group-hover:bg-white group-hover:text-black transition shrink-0">
                                     Choose Files
                                 </div>
-                                {/* CHANGED: Dynamic text handling based on number of files */}
+                                {/*Dynamic text handling based on number of files */}
                                 <span className="text-xs text-[#888] truncate flex-1 pr-2">
                                     {files && files.length > 0 
                                         ? files.length === 1 
@@ -51,7 +51,7 @@ export default function FileExplorer({
                                 </span>
                             </div>
 
-                            {/* CHANGED: Disable logic checks the array length */}
+                            {/*Disable logic checks the array length */}
                             {files && files.length > 0 && <button onClick={() => { setFiles([]); if (fileInputRef.current) fileInputRef.current.value = ""; }} className="w-full sm:w-auto px-4 py-2.5 text-[10px] font-bold border border-red-900/30 text-red-500 rounded-lg uppercase tracking-widest hover:bg-red-500/10 z-20">CLEAR</button>}
                         </div>
                         <button onClick={handleUpload} disabled={uploading || !files || files.length === 0} className="w-full sm:w-auto bg-white text-black px-8 py-2.5 rounded-lg font-bold text-[11px] md:text-xs uppercase tracking-widest hover:bg-[#ccc] transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0 z-20">

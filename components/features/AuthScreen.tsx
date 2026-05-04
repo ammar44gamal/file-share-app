@@ -24,14 +24,14 @@ export default function AuthScreen({
                     <form onSubmit={handleVerifyOTP} className="space-y-6 animate-in slide-in-from-right-8 duration-300">
                         <div className="text-center space-y-2 mb-6">
                             <h2 className="text-2xl font-bold tracking-tight">Verify Device</h2>
-                            {/* CHANGED: Text updated to 8-digit */}
+                            {/*Text updated to 8-digit */}
                             <p className="text-[#888] text-xs">Enter the 8-digit security code sent to <span className="text-white">{email}</span></p>
                         </div>
 
                         <div className="space-y-4">
                             <input 
                                 type="text" 
-                                maxLength={8} // CHANGED: Allow 8 characters
+                                maxLength={8} //Allow 8 characters
                                 value={otpCode} 
                                 onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} 
                                 placeholder="00000000" // CHANGED: 8 zeros
@@ -40,7 +40,7 @@ export default function AuthScreen({
                             />
                         </div>
 
-                        {/* CHANGED: Disable unless exactly 8 digits are typed */}
+                        {/*Disable unless exactly 8 digits are typed */}
                         <button type="submit" disabled={otpCode.length !== 8} className="w-full bg-white text-black font-black p-3.5 rounded-xl uppercase tracking-widest hover:bg-[#ddd] disabled:opacity-50 disabled:cursor-not-allowed transition shadow-[0_0_15px_rgba(255,255,255,0.1)]">
                             Authorize
                         </button>

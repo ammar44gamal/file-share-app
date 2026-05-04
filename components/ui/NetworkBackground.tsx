@@ -82,7 +82,7 @@ export default function NetworkBackground() {
   return (
     <canvas 
       ref={canvasRef} 
-      // Changed opacity-20 to opacity-60 to make it clearly white
+      // opacity-60 to make it clearly white
       className="absolute inset-0 w-full h-full z-0 opacity-60 pointer-events-none fade-in duration-1000"
       // Extended the black mask from 20% to 50% so the bright part covers more of the header
       style={{ maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)', WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)' }}
