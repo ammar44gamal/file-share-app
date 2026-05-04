@@ -472,7 +472,12 @@ export default function DistributedFileHub() {
             {viewingSearch ? (
                 <GlobalSearch {...{globalSearchQuery, performGlobalSearch, globalSearchResults, formatBytes, handleDownload}} />
             ) : viewingComms ? (
-                <ChatInterface {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef, replyTo, setReplyTo}} />
+                // FIX IMPLEMENTED HERE: Added isVisible={true} and showAlert={showAlert}
+                <ChatInterface 
+                    isVisible={true}
+                    showAlert={showAlert}
+                    {...{searchQuery, setSearchQuery, handleSearchUsers, searchResults, sendFriendRequest, friendRequests, handleRequestAction, friends, activeChat, setActiveChat, unreadSenders, messages, setMessages, user, handleDownload, isTyping, newMessage, handleTyping, chatFile, setChatFile, chatFileInputRef, handleSendMessage, isRecording, startRecording, stopRecordingAndSend, cancelRecording, chatScrollRef, replyTo, setReplyTo}} 
+                />
             ) : viewingAdminPanel ? (
                 <AdminPanel adminUserList={adminUserList} />
             ) : (

@@ -259,7 +259,21 @@ export default function ChatInterface({
     };
 
     const createPeerConnection = (targetId: string) => {
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+        // TURN SERVER FIX INCLUDED HERE for 4G Networks!
+        const pc = new RTCPeerConnection({ 
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                {
+                    urls: [
+                        'turn:filehub-webrtc.metered.live:80',
+                        'turn:filehub-webrtc.metered.live:443',
+                        'turns:filehub-webrtc.metered.live:443'
+                    ],
+                    username: 'd3e3032b901becb839b91bab',             
+                    credential: 'e+/TAdE3L+M0zJsN'          
+                }
+            ] 
+        });
         
         pc.onicecandidate = (event) => {
             if (event.candidate) sendSignal('candidate', targetId, { candidate: event.candidate });
