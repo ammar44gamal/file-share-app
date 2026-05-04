@@ -261,17 +261,19 @@ export default function ChatInterface({
     const createPeerConnection = (targetId: string) => {
         const pc = new RTCPeerConnection({ 
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }, // Plan A: Direct Connection
+                { urls: 'stun:stun.l.google.com:19302' }, // Plan A: Free Direct Connection
                 {
-                    // Plan B: Relay the video if Mobile 4G blocks it
+                    // Plan B: Metered.ca TURN Relay for Strict 4G/5G Networks
                     urls: 'turn:filehub-webrtc.metered.live:80', 
                     username: 'd3e3032b901becb839b91bab',             
                     credential: 'e+/TAdE3L+M0zJsN'          
                 }
-            ] 
+            ],
+            // 👇 TEMPORARY TEST: Forcing it to use the TURN server
+            iceTransportPolicy: 'relay' 
         });
         
-        // ... rest of the code remains the same
+        
         
         pc.onicecandidate = (event) => {
             if (event.candidate) sendSignal('candidate', targetId, { candidate: event.candidate });
