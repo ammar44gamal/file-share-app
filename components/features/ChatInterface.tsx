@@ -261,17 +261,27 @@ export default function ChatInterface({
     const createPeerConnection = (targetId: string) => {
         const pc = new RTCPeerConnection({ 
             iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' }, // Plan A: Free Direct Connection
+                // Plan A: Free Direct Connection (STUN)
+                { urls: 'stun:stun.l.google.com:19302' }, 
+                
+                // Plan B: Bulletproof Metered.ca TURN Relay
                 {
-                    // Plan B: Metered.ca TURN Relay for Strict 4G/5G Networks
-                    urls: 'turn:filehub-webrtc.metered.live:80', 
+                    urls: [
+                        'turn:filehub-webrtc.metered.live:80',
+                        'turn:filehub-webrtc.metered.live:443',
+                        'turns:filehub-webrtc.metered.live:443'
+                    ],
                     username: 'd3e3032b901becb839b91bab',             
+                    // IMPORTANT: Ensure there are no spaces at the start or end of this password!
                     credential: 'e+/TAdE3L+M0zJsN'          
                 }
-            ],
-            // 👇 TEMPORARY TEST: Forcing it to use the TURN server
-            iceTransportPolicy: 'relay' 
+            ]
         });
+        
+        // 👇 ADD THIS DEBUGGER: It will tell us exactly what the network is doing
+        pc.oniceconnectionstatechange = () => {
+            console.log("ICE Connection State:", pc.iceConnectionState);
+        };
         
         
         
